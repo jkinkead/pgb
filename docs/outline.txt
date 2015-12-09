@@ -1,0 +1,58 @@
+The basic unit of work is a "task". A task has a name and zero or more named
+arguments. Named arguments either have string values or taks values, or
+homogeneous lists of those two things. All task arguments are dependencies, and
+all dependencies are guaranteed to have executed before the task is called.
+
+Tasks also have one or more outputs, which are file(s) or a single string.
+Output is returned from the task when it runs. pgb will track outputs by hashed
+contents (...or modified time?)
+
+When receiving input, a task gets an instance of a TaskRef, not a full Task.
+This is to provide extra functionality for analyzing outputs, but also to keep
+the interface simple - you don't want to accidentally run a task when you're
+only trying to get its output!
+
+If you want to run a task, there is an API for that (TBD).
+
+Normally, tasks will always be invoked. TaskRef instances have an isUpdated
+method to check for input newness, so a task can perform special actions based
+on what input has changed. There is also a parameter containing the previous
+output of the task, if it still exists. You should check that your output is
+still there if you are planning on skipping the output steps!
+
+If you have a task that doesn't need to be run at all if its input is
+unchanged, you can use a SkippableTask. This also handles checking that the
+previous output exists.  SkippableTasks will only be invoked if all least one
+of their dependencies has changed, or if they have no dependencies - or, more
+concisely and confusingly, if not all of their dependencies are unchanged.
+
+Details: The previous output is only missing if the whole target directory for
+the task is gone. This means you'll only be likely to see it empty on new
+builds or builds after a clean. This also means that you need to leave your
+output files alone when you're not executing the task that owns them - you
+might mess up your build entirely!
+
+
+Basic tasks:
+file, files -
+  in: just name
+  out: file(s)
+
+javac, scalac -
+  in: source file(s), jars (for classpath)
+  out: class file(s)
+
+java_library, scala_library (maybe) - output is dir instead of jar?
+
+jar -
+  in: class files, resources
+  out: jar file
+
+publish -
+  in: POM (or similar), place to publish, artifact
+
+mvn_lib:
+  in: definition; repository
+  out: jar
+
+
