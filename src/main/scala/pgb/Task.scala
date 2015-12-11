@@ -3,7 +3,7 @@ package pgb
 /** A single task in the build system.
   * @tparam O the type of the task's output
   */
-trait Task[O] {
+trait Task[O <: Artifact] {
   /** Runs a task with arguments specified in the build file, and the result of the previous run, if
     * it's still present. This will be invoked only after all inputs in all arguments have completed
     * execution.
@@ -14,7 +14,7 @@ trait Task[O] {
     */
   def execute(
     name: String,
-    arguments: Map[String, Seq[Input[_]]],
-    previousOutput: Option[Artifact[O]]
-  ): Artifact[O]
+    arguments: Map[String, Seq[Input]],
+    previousOutput: Option[O]
+  ): O
 }
