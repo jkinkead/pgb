@@ -32,6 +32,92 @@ builds or builds after a clean. This also means that you need to leave your
 output files alone when you're not executing the task that owns them - you
 might mess up your build entirely!
 
+---
+
+`include` - this loads another build's contents into pdb. This is primarily useful for task
+definitions; they're the only thing that doesn't have a useful shorthand.
+
+TODO: Tasks should be reference tasks or named / "work" / normal tasks. The
+only difference is how they treat their default arg: Reference tasks treat it
+as a path, while named tasks treat it as a name.
+
+TODO: Think about replacing build file references with an include() task
+dependency.
+
+---
+
+Builds files are loaded in several passes. The first step is to create an
+include() task for the target buildfile; although that's probably too much to
+think about.
+
+First, the build files to load are identified by the target tasks requested to
+be run. These are loaded in the order the tasks were requested, loading into
+the same build state.
+
+The first pass parses the build file into a flat, in-memory representation,
+with no special handling.
+
+
+The second pass builds the dependency graph. Each task is turned into a
+TaskNode, with dependsOn edges out to all of its arguments. If the argument is
+a reference task, it will point to a shared TaskRef node, and if the reference
+is to an item in another build file, an include() task dependency will be
+added to the current build file, and a direct dependency on it from the current
+reference task will be added. If the argument is a non-reference task, a new
+node will be created.
+
+For tasks whose type is unknown, a special three-link dependency chain is
+added. The first link is an empty dependency container, which depends on the
+task_def_ref for the type, which depends on all include() tasks in the current
+build. When the task_def_ref runs, it runs the task_def, then analyzes the
+arguments for the original task, adding the dependencies to the task container.
+
+
+The third pass checks for cycles in the dependency graph (TODO: This should be
+rolled into the below - if a coloring DFS on the graph encounters its own
+color, there is a cycle)
+
+The fourth pass is the execution pass for the target chosen. Starting from the
+target, the graph is traversed breadth-first, and all leaf nodes are collected
+in an execution set.
+
+The execution algorithm is:
+
+  let execution_set = leaf_nodes
+`start`:
+  par_foreach target in execution_set:
+    target.execute
+  let new_execution_set = set.empty
+  foreach target in execution_set:
+    foreach dependent in target.dependents:
+      if dependent.dependencies.forall(dependency.is_complete):
+        new_execution_set.add(dependent)
+
+  execution_set = new_execution_set
+  goto `start` if execution_set.non_empty
+
+
+Note that some execution steps will require resolving more build files. These
+build files follow the same rule as above - but note that the special task_def
+task will update global state.
+
+
+The dependency graph structure works because we have two invarients: any task
+can't be exucted until it is defined, and all definitions depend upon their
+local includes - meaning that even tasks defined in external build files will
+load, provided the current buildfile `include`s a file with their task_def.
+
+task_ref works because the task will be loaded before the reference resolves;
+the task will execute and be populated in time for the reference to check it.
+
+---
+
+TODOs:
+- figure out working directory
+  - How does a task get its scratch directory?
+  - How does pgb figure out where the root of the build is? Where is this stored?
+
+---
 
 Basic tasks:
 file, files -

@@ -1,0 +1,59 @@
+Outline of the build algorithm.
+
+Build files can be loaded at any point during the build. This means that the
+build has to support the graph being updated on-the-fly during task execution.
+
+Some implications are:
+- a task that's being added to the graph can't depend on any of the current task's parents
+
+`include`s processed during execution are folded in to the main graph where
+appropriate. Since this can only happen during the resolution of a `task` action, 
+they'll be connected in by default with the execution of `task`.
+
+---
+
+Tasks in the graph are instances of a TaskRef. This has the name of the task,
+the task implementation, and task argument mappings (dependencies). Since the
+task might be encountered as a dependency before the implementation is found,
+both the implementation and arguments may be optional. If both are missing, it
+means the task hasn't been loaded; if just the implementation is missing, it
+means the task_def hasn't been loaded.
+
+Reference tasks (those whose name arguments are translated to an object) have
+their name munged to canonicalize the path, then have the task type prepended.
+For example, file("foo/../bar.txt") would turn into "file:bar.txt".
+
+In addition to the graph, there's a mapping from (canonical) names to the task
+implementations.
+
+---
+
+Kinds of reference tasks:
+
+Self-contained execution:
+  file() / files()
+  include()
+  mvn_lib()
+
+Execution depends on another task's definition:
+  task()
+
+
+Kinds of file URIs (paths):
+- file
+- github
+- http
+- mvn? if possible.
+
+---
+
+Task API
+
+// Type for implicit conversions.
+nameType: ArgumentType
+// Types for implicit conversions.
+argumentTypes: Map[String, ArgumentType]
+allowUnknownArugments: Boolean
+isSkippable: Boolean
+// TODO: Working dir?
+execute(name: Argument, arguments: String[Argument], previousOutput: Stuff)
