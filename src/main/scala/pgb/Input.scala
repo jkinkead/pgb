@@ -9,7 +9,7 @@ sealed abstract class Input {
 }
 
 /** An input of files. */
-case class FileInput(files: Iterable[FileArtifact], override val isUpdated: Boolean) extends Input
+case class FilesInput(files: FilesArtifact, override val isUpdated: Boolean) extends Input
 
 /** An input of a string. */
 case class StringInput(value: StringArtifact, override val isUpdated: Boolean) extends Input

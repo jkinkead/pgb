@@ -11,6 +11,8 @@ trait Task[O <: Artifact] {
     * @param arguments all non-name arguments for the task
     * @param previousOutput if set, the result of the last run of this task
     * @return the output(s) for this task
+    * @throws ConfigException if there was a problem with the task's arguments or name
+    * @throws ExecutionException if there was a problem executing the task
     */
   def execute(
     name: String,

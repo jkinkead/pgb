@@ -18,10 +18,10 @@ sealed abstract class Artifact {
   */
 case class StringArtifact(value: String) extends Artifact
 
-/** An artifact for a file.
-  * @param value the file that has been output
+/** An artifact for zero or more files.
+  * @param value the files that have been output
   */
-case class FileArtifact(value: File) extends Artifact
+case class FilesArtifact(values: Iterable[File]) extends Artifact
 
 /** A artifact for a task that never produces output. This will always be considered new output. */
 case object NoArtifact extends Artifact
