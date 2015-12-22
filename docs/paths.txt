@@ -1,0 +1,47 @@
+# Overview
+
+Every task in `pgb` has a unique path that represents it. These paths are URIs, either relative or
+absolute. If a relative path is given, it's treated as relative to the buildfile the path is in. So,
+if you have a buildfile `somedir/build.pgb`, a task `file("foo.txt")` will resolve to
+`somedir/foo.txt`. For more information on how URIs are parsed, and on the terminology used, see
+[the URI javadoc](http://docs.oracle.com/javase/8/docs/api/index.html?java/net/URI.html).
+
+`pgb` currently only supports `file:` schemes, but more are planned in the future.
+
+# Globs (wildcards) & lookbehind
+
+`pgb` supports two special types of path elements: file globs and lookbehind paths.
+
+## Globs
+
+See
+[the java tutorial on globs](https://docs.oracle.com/javase/tutorial/essential/io/fileOps.html#glob)
+for glob documentation.
+
+## Lookbehind
+
+Lookbehind paths are paths containing an element that matches `"..."` - meaning, any paths that
+start with `.../` or have `/.../` in the middle. Technically, they can end with `...`, but that's
+the same as `/.` - it matches the current directory. A lookbehind path will match the current
+directory, or any parent directory of the current directory, trying to match the path that follows
+it - but it will stop looking back when it finds the first match!
+
+For example, given the directory structure:
+```
+./foo.txt
+./bar.txt
+./src/foo.txt
+./src/main/foo.txt
+./src/main/scala/
+./src/main/scala/build.pgb
+./src/main/scala/Foo.scala
+```
+Within `./src/main/scala/build.pgb`, the path `.../Foo.scala` resolves to
+`./src/main/scala/Foo.scala`; `.../foo.txt` resolves to `./src/main/foo.txt`; `.../bar.txt`
+resolves to `./bar.txt`; and `.../src/foo.txt` resolves to `./src/foo.txt`.
+
+This is useful for nested builds that wish to have common configuration files or tasks at their
+root.
+
+It's not recommended that you use `**` globs in lookbehind paths as they can be very expensive to
+expand.

@@ -28,6 +28,40 @@ implementations.
 
 ---
 
+Another possible algorithm! This special-cases include(), task_def(), and task references, but
+produces a much saner algorithm.
+
+phase 1 - generate a list of buildfiles to include from target name(s)
+
+loadBuildfiles(
+  files: Seq[Path],
+   existingBuild: Option[BuildFile]
+): BuildFile(tasks: Seq[FlatTask], loaded: Set[Include], includes: Set[Include], taskDefs: Map[String, FlatTask])
+  phase 2 - load buildfiles into list of tasks. map canonical name to flat task. separate include
+    tasks from others. note task_def tasks into list. strip includes of already-included files.
+  phase 3 - register list of task_def tasks (map task name to task_def task); clear list
+
+For targets specified:
+phase 4 - trivial verification of targets: do they exist in the build?
+foreach target:
+phase 5 - is task a task ref?
+  -> if yes and task is in an unloaded build file:
+    loadBuildfiles(task_build_file,
+      currBuild.copy(includes = includes - task_build_file)
+    )
+  -> replace current task with loaded version; error if not found
+phase 6 - is task type defined?
+  -> if not and have currBuild.includes.nonEmpty:
+      loadBuildfiles(currBuild.includes, currBuild.copy(includes = Seq.empty));
+      goto phase 5 (loop until resolves or error)
+  -> if not and no includes, raise error
+phase 7 - argument verification - foreach argument in task:
+  -> if not task (implicit type), check implementation
+  -> goto phase 5
+  -> validate argument name + type with task implementation
+
+---
+
 Kinds of reference tasks:
 
 Self-contained execution:
