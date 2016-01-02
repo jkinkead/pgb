@@ -51,12 +51,12 @@ phase 5 - is task a task ref?
     )
   -> replace current task with loaded version; error if not found
 phase 6 - is task type defined?
-  -> if not and have currBuild.includes.nonEmpty:
+  -> if not and currBuild.includes.nonEmpty:
       loadBuildfiles(currBuild.includes, currBuild.copy(includes = Seq.empty));
       goto phase 5 (loop until resolves or error)
   -> if not and no includes, raise error
 phase 7 - argument verification - foreach argument in task:
-  -> if not task (implicit type), check implementation
+  -> if not task (string literal with implicit type), check implementation for type
   -> goto phase 5
   -> validate argument name + type with task implementation
 
