@@ -1,8 +1,12 @@
-package pgb
+package pgb.path
+
+import pgb.ConfigException
 
 import java.io.File
 import java.net.{ URI, URISyntaxException }
-import java.nio.file.Files
+import java.nio.file.{ FileSystem, FileSystems, Files, Paths }
+
+import scala.collection.JavaConverters._
 
 /** Class to handle manipulating pgb paths.
   *
@@ -13,15 +17,40 @@ import java.nio.file.Files
   *
   * TODO: Document paths!
   */
-object BuildPaths {
+object Resolver {
+  /** Valid schemes for resolving files. */
+  // TODO: Inject as constructor parameter.
+  val ValidSchemes = Set("file")
+
   /** Regex to match a path with a glob. The match starts after the last path separator. */
   val FileGlob = """(?:^|/)[^/]*?(?<=[^\\])[*{\[?]""".r.unanchored
+
+  val filesystem: FileSystem = FileSystems.getDefault
+
+  /** Given a path and a root, returns the file this path points to. This will throw an exception if
+    * the provided path doesn't resolve to exactly one file.
+    * @param path the path to resolve, either relative or absolute
+    * @param buildRoot the root to resolve the path against, if it is a relative path
+    * @return the single file this path points to
+    * @throws IllegalArgumentException if the build root is a relative path
+    * @throws ConfigException if the provided path is invalid, or if it doesn't resolve to exactly
+    *     one file
+    */
+  def resolveSingleFilePath(path: String, buildRoot: URI): File = {
+    val files = resolvePath(path, buildRoot)
+    if (files.isEmpty) {
+      throw new ConfigException(s"""Path "$path" resolved to no files.""")
+    } else if (files.tail.nonEmpty) {
+      throw new ConfigException(s"""Path "$path" resolved to multiple files.""")
+    }
+
+    files.head
+  }
 
   /** Given a path and a build root, returns the file(s) this path points to.
     * @param path the path to resolve, either relative or absolute
     * @param buildRoot the root to resolve the path against, if it is a relative path
-    * @return the absolute, canonical version of the given path, resolved against the given build
-    *     root if it was a relative path
+    * @return the file(s) this path resolves to
     * @throws IllegalArgumentException if the build root is a relative path
     * @throws ConfigException if the provided path is invalid
     */
@@ -35,30 +64,34 @@ object BuildPaths {
     val pathUri = toPathUri(path)
     val scheme = if (pathUri.isAbsolute) { pathUri.getScheme } else { buildRoot.getScheme }
 
-    // TODO: Factor this into a class.
-    val isFilesystem = scheme match {
-      case "file" | "github" => true
-      case "task" => false
-      case _ => throw new ConfigException(s"Unhandled scheme: $scheme")
+    if (!ValidSchemes.contains(scheme)) {
+      throw new ConfigException(s"Unhandled scheme: $scheme")
     }
 
-    if (path.startsWith(".../")) {
-      if (!isFilesystem) {
-        throw new ConfigException(
-          s"""Lookbehind path "$path" specified for non-filesystem scheme "$scheme""""
-        )
-      }
+    // Map build root to a directory.
+    // TODO: Delegate to Scheme implementation.
+    val rootDirectory = Paths.get(buildRoot.resolve("."))
+
+    val rawFiles = if (path.startsWith(".../")) {
       // TODO: Loop until we find files.
       null
     } else {
-      // TODO: Map build root to a directory, if filesystem. Else, resolve full path.
-      if (isFilesystem) {
-        // TODO: Map the build file to a base directory.
-        val baseDirectory: File = null
+      // TODO: Delegate to Scheme implementation.
+      if (pathUri.isAbsolute) {
+        // TODO: Should this handle globs?
+        Seq(Paths.get(pathUri).toFile)
       } else {
+        val matcher = filesystem.getPathMatcher("glob:" + rootDirectory.toString + "/" + path)
+        val fileIterator = Files.walk(rootDirectory).iterator.asScala filter {
+          matcher.matches
+        } map {
+          _.toFile
+        }
+        Seq(fileIterator.toSeq: _*)
       }
-      null
     }
+
+    rawFiles filter { _.exists }
   }
 
   /** Converts a string into a path URI, validating the basic URI formatting.
@@ -81,28 +114,5 @@ object BuildPaths {
     }
 
     pathUri.normalize
-  }
-
-  /** Splits a path into its base component and any lookbehind or wildcard components. For paths
-    * with no special components, this will return the path unchanged, and an empty relative path.
-    * For paths with special components, the first part will contain the absolute URI of the path
-    * leading up to the first special component, and the second part will be a relative URI
-    * containing the special components.
-    *
-    * This assumes that the given path is absolute and non-opaque.
-    * @param path the URI of the path to split
-    * @return a pair of URIs, the first being the absolute base path, and the second being the
-    *     relative wildcard off of that
-    * @throws ConfigException if the given path has more than one lookbehind component, or if it has
-    *     wildcards preceeding the lookbehind component
-    */
-  def splitPath(path: URI): (URI, Option[URI]) = {
-    // This is everything after the authority (which might be the first path component).
-    val pathComponent = path.getRawPath
-    val lookbehindIndex = pathComponent.indexOf("/...")
-    // Ends with "/..." or contains "/.../".
-    if (lookbehindIndex == pathComponent.length - 4 || pathComponent(lookbehindIndex + 4) == '/') {
-    }
-    null
   }
 }
