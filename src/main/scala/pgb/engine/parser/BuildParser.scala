@@ -50,17 +50,47 @@ class BuildParser extends RegexParsers {
   /** A task with the name as a first anonymous argument. */
   def taskWithName: Parser[FlatTask] = {
     (name <~ "(") ~ stringLiteral ~ ("," ~> repsep(argument, ",")).? <~ ")" ^^ {
-      case taskType ~ name ~ Some(arguments) => FlatTask(taskType, Some(name), arguments)
-      case taskType ~ name ~ None => FlatTask(taskType, Some(name), Seq.empty)
+      case taskType ~ name ~ Some(arguments) => RawTask(taskType, Some(name), arguments)
+      case taskType ~ name ~ None => RawTask(taskType, Some(name), Seq.empty)
+    } into {
+      validateTask
     }
   }
 
   /** A task with the name specified as an argument, e.g. `name = "foo"`. */
   def taskOnlyArgs: Parser[FlatTask] = (name <~ "(") ~ repsep(argument, ",") <~ ")" ^^ {
-    case taskType ~ arguments => FlatTask(taskType, None, arguments)
+    case taskType ~ arguments => RawTask(taskType, None, arguments)
+  } into { validateTask }
+
+  /** Validates a raw task, converting it into a FlatTask. Errors if the task contains duplicated
+    * arguments.
+    */
+  def validateTask(task: RawTask): Parser[FlatTask] = {
+    val allArguments = task.arguments ++ (task.name map { name =>
+      Argument("name", Seq(StringArgument(name)))
+    })
+    // Convert the arguments list to a map.
+    val argumentsMap = (allArguments map { argument => argument.name -> argument }).toMap
+    if (argumentsMap.size != task.arguments.size + 1) {
+      // Figure out if any arguments were specified twice.
+      val specifiedNames = task.arguments groupBy { _.name }
+      val duplicateOption = specifiedNames find {
+        case (_, values) => values.length > 1
+      } map {
+        case (name, values) => name
+      }
+
+      val errorMessage = duplicateOption match {
+        case Some(name) => s"""argument "$name" was provided multiple times"""
+        case None => """"name" was provided as named argument and default argument"""
+      }
+      err(errorMessage)
+    } else {
+      success(FlatTask(task.taskType, argumentsMap))
+    }
   }
 
-  /** Task, of the form task_type("name", arg1 = "args", arg2 = ["etc"]). */
+  /** Task, e.g. `task_type("name", arg1 = "args", arg2 = ["etc"])` */
   def task: Parser[FlatTask] = taskWithName | taskOnlyArgs
 
   /** Whole file - any number of tasks. */

@@ -10,7 +10,7 @@ class BuildParserSpec extends UnitSpec {
   val testParser = new BuildParser
   import testParser.{ Error, Failure, ParseResult, Success }
 
-  /** @return the successful parse result, or a failure if it's in error. */
+  /** @return the successful parse result, or a failure if it's in error */
   def success[T](result: ParseResult[T]): T = {
     result match {
       case Success(parsedValue, _) => parsedValue
@@ -22,6 +22,20 @@ class BuildParserSpec extends UnitSpec {
   /** Matches an expected value of a parse result against the parse result. */
   def beSuccess[T](expectedValue: T): Matcher[ParseResult[T]] = {
     be(expectedValue) compose success[T] _
+  }
+
+  /** @return the failure message for the given parse result, or a failure if it's successful */
+  def failure(result: ParseResult[_]): String = {
+    result match {
+      case Success(parsedValue, _) => fail("successfully parsed: " + parsedValue)
+      case Failure(message, _) => message
+      case Error(message, _) => message
+    }
+  }
+
+  /** Matches an expected error message against the parse result. */
+  def includeFailureMessage(message: String): Matcher[ParseResult[_]] = {
+    include(message) compose failure _
   }
 
   "stringLiteral" should "parse a quoted string" in {
@@ -51,12 +65,20 @@ class BuildParserSpec extends UnitSpec {
     result should beSuccess(Argument("foo", Seq(StringArgument("bar"), StringArgument("gaz"))))
   }
 
-  "task" should "parse a task with just a name" in {
-    val result = testParser.parseAll(testParser.task, """file("./foo.txt")""")
-    result should beSuccess(FlatTask("file", Some("./foo.txt"), Seq.empty))
+  trait TaskFixture {
+    val fooName = Map("name" -> Argument("name", Seq(StringArgument("./foo.txt"))))
+    val barName = Map("name" -> Argument("name", Seq(StringArgument("bar"))))
+
+    val fooTask = FlatTask("file", fooName)
+    val barTask = FlatTask("file", barName)
   }
 
-  it should "parse a task with string arguments" in {
+  "task" should "parse a task with just a name" in new TaskFixture {
+    val result = testParser.parseAll(testParser.task, """file("./foo.txt")""")
+    result should beSuccess(fooTask)
+  }
+
+  it should "parse a task with string arguments" in new TaskFixture {
     val result = testParser.parseAll(
       testParser.task,
       """file("./foo.txt", one = "one", two = ["t", "w", "o"])"""
@@ -64,54 +86,68 @@ class BuildParserSpec extends UnitSpec {
     result should beSuccess(
       FlatTask(
         "file",
-        Some("./foo.txt"),
-        Seq(
-          Argument("one", Seq(StringArgument("one"))),
-          Argument("two", Seq(StringArgument("t"), StringArgument("w"), StringArgument("o")))
+        fooName ++ Map(
+          "one" -> Argument("one", Seq(StringArgument("one"))),
+          "two" ->
+            Argument("two", Seq(StringArgument("t"), StringArgument("w"), StringArgument("o")))
         )
       )
     )
   }
 
-  it should "parse a task with task arguments" in {
-    val result = testParser.parseAll(testParser.task, """file("foo", arg = file("bar"))""")
+  it should "parse a task with task arguments" in new TaskFixture {
+    val result = testParser.parseAll(testParser.task, """file("./foo.txt", arg = file("bar"))""")
     result should beSuccess(
       FlatTask(
         "file",
-        Some("foo"),
-        Seq(Argument("arg", Seq(TaskArgument(FlatTask("file", Some("bar"), Seq.empty)))))
+        fooName ++ Map(
+          "arg" -> Argument("arg", Seq(TaskArgument(barTask)))
+        )
       )
     )
   }
 
-  it should "handle comments correctly" in {
+  it should "handle comments correctly" in new TaskFixture {
     val result = testParser.parseAll(testParser.task, """
       # The Foo file.
       file(
-        "foo" # It's called "foo".
+        "./foo.txt" # It's called "foo.txt".
       # Multi-line comment.
 
       # Continues!
       )
     """)
-    result should beSuccess(FlatTask("file", Some("foo"), Seq.empty))
+    result should beSuccess(fooTask)
   }
 
-  "parseBuildFile" should "handle a simple file" in {
+  it should "detect duplicate arguments" in {
+    val result = testParser.parseAll(testParser.task, """file("bar", arg = "a", arg = "b")""")
+    result should includeFailureMessage("""argument "arg"""")
+  }
+
+  it should "detect duplicate name arguments" in {
+    val result = testParser.parseAll(testParser.task, """file("bar", name = "a", arg = "b")""")
+    result should includeFailureMessage(""""name" was provided""")
+  }
+
+  "parseBuildFile" should "handle a simple file" in new TaskFixture {
     val result = testParser.parseBuildFile("""
       # A whole build file.
-      file("foo")
+      file("./foo.txt")
 
       file("bar", arg=task("foo"))
       # Done!
     """)
     result should beSuccess(
       Seq(
-        FlatTask("file", Some("foo"), Seq.empty),
+        fooTask,
         FlatTask(
           "file",
-          Some("bar"),
-          Seq(Argument("arg", Seq(TaskArgument(FlatTask("task", Some("foo"), Seq.empty)))))
+          barName ++ Map(
+            "arg" -> Argument("arg", Seq(TaskArgument(
+              FlatTask("task", Map("name" -> Argument("name", Seq(StringArgument("foo")))))
+            )))
+          )
         )
       )
     )
