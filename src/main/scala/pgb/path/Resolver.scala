@@ -73,8 +73,16 @@ object Resolver {
     val rootDirectory = Paths.get(buildRoot.resolve("."))
 
     val rawFiles = if (path.startsWith(".../")) {
-      // TODO: Loop until we find files.
-      null
+      val searchPath = path.stripPrefix(".../")
+      // TODO: Delegate to Scheme implementation.
+      var searchRoot = rootDirectory
+      var foundFiles = Seq.empty[File]
+      // Loop until we find files or hit the empty path.
+      while (searchRoot.getRoot != searchRoot && foundFiles.isEmpty) {
+        foundFiles = resolvePath(searchPath, searchRoot.toUri)
+        searchRoot = searchRoot.resolve("..")
+      }
+      foundFiles
     } else {
       // TODO: Delegate to Scheme implementation.
       if (pathUri.isAbsolute) {
@@ -82,6 +90,9 @@ object Resolver {
         Seq(Paths.get(pathUri).toFile)
       } else {
         val matcher = filesystem.getPathMatcher("glob:" + rootDirectory.toString + "/" + path)
+        // TODO: This isn't efficient enough - this should split the path into chunks, and then
+        // iterate over them. This also doesn't play nicely with lookbehind paths, since you'll get
+        // a HUGE tree and / or an error when a path doesn't match.
         val fileIterator = Files.walk(rootDirectory).iterator.asScala filter {
           matcher.matches
         } map {

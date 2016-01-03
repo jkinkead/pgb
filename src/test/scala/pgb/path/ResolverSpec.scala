@@ -109,6 +109,37 @@ class ResolverSpec extends UnitSpec with BeforeAndAfter {
     results shouldBe Seq(path.toFile)
   }
 
+  it should "resolve a simple lookbehind path" in {
+    val newRoot = tempRoot.resolve("src/main/scala")
+    val results = Resolver.resolvePath(".../foo.txt", newRoot.toUri)
+    results shouldBe Seq(tempRoot.resolve("src/foo.txt").toFile)
+  }
+
+  it should "resolve a relative lookbehind path" in {
+    val newRoot = tempRoot.resolve("src/main/scala")
+    val results = Resolver.resolvePath(".../src/foo.txt", newRoot.toUri)
+    results shouldBe Seq(tempRoot.resolve("src/foo.txt").toFile)
+  }
+
+  it should "resolve a globbed lookbehind path" in {
+    val newRoot = tempRoot.resolve("src/main/scala")
+    val results = Resolver.resolvePath(".../b*.txt", newRoot.toUri)
+    results shouldBe Seq(tempRoot.resolve("bar.txt").toFile)
+  }
+
+  // TODO: This requires updating the lookbehind code per the TODO in Resolver.scala.
+  ignore should "resolve an empty lookbehind path" in {
+    val newRoot = tempRoot.resolve("src/main/scala")
+    val results = Resolver.resolvePath(".../gaz.txt", newRoot.toUri)
+    results shouldBe Seq.empty
+  }
+
+  it should "resolve a lookbehind path in the same directory" in {
+    val newRoot = tempRoot.resolve("src/main/scala")
+    val results = Resolver.resolvePath(".../Foo.scala", newRoot.toUri)
+    results shouldBe Seq(newRoot.resolve("Foo.scala").toFile)
+  }
+
   it should "skip missing files" in {
     val path = tempRoot.resolve("gaz.txt")
     val results = Resolver.resolvePath(path.toUri.toString, buildUri)
