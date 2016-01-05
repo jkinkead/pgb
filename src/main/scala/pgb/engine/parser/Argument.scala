@@ -4,6 +4,7 @@ package pgb.engine.parser
 sealed abstract class ArgumentValue
 case class StringArgument(value: String) extends ArgumentValue
 case class TaskArgument(value: FlatTask) extends ArgumentValue
+case class RawTaskArgument(value: RawTask) extends ArgumentValue
 
 /** An argument to a task parsed from a build file. */
 case class Argument(name: String, values: Seq[ArgumentValue])

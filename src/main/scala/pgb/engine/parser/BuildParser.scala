@@ -1,6 +1,12 @@
 package pgb.engine.parser
 
+import pgb.ConfigException
+
+import java.io.File
+
+import scala.io.Source
 import scala.util.parsing.combinator.RegexParsers
+import scala.util.parsing.input.Position
 
 /** Parser for build files. */
 class BuildParser extends RegexParsers {
@@ -31,7 +37,7 @@ class BuildParser extends RegexParsers {
   val stringArgument: Parser[StringArgument] = stringLiteral ^^ { StringArgument(_) }
 
   /** A task-valued argument. */
-  val taskArgument: Parser[TaskArgument] = task ^^ { TaskArgument(_) }
+  val taskArgument: Parser[RawTaskArgument] = task ^^ { RawTaskArgument(_) }
 
   /** Any argument value. */
   val argumentValue: Parser[ArgumentValue] = stringArgument | taskArgument
@@ -48,29 +54,31 @@ class BuildParser extends RegexParsers {
   }
 
   /** A task with the name as a first anonymous argument. */
-  def taskWithName: Parser[FlatTask] = {
+  def taskWithName: Parser[RawTask] = {
     (name <~ "(") ~ stringLiteral ~ ("," ~> repsep(argument, ",")).? <~ ")" ^^ {
       case taskType ~ name ~ Some(arguments) => RawTask(taskType, Some(name), arguments)
       case taskType ~ name ~ None => RawTask(taskType, Some(name), Seq.empty)
-    } into {
-      validateTask
     }
   }
 
   /** A task with the name specified as an argument, e.g. `name = "foo"`. */
-  def taskOnlyArgs: Parser[FlatTask] = (name <~ "(") ~ repsep(argument, ",") <~ ")" ^^ {
+  def taskOnlyArgs: Parser[RawTask] = (name <~ "(") ~ repsep(argument, ",") <~ ")" ^^ {
     case taskType ~ arguments => RawTask(taskType, None, arguments)
-  } into { validateTask }
+  }
 
-  /** Validates a raw task, converting it into a FlatTask. Errors if the task contains duplicated
-    * arguments.
-    */
-  def validateTask(task: RawTask): Parser[FlatTask] = {
+  /** Validates a raw task, converting it into a FlatTask, or throwing a ConfigException. */
+  def validateTask(task: RawTask, filename: String, contents: String): FlatTask = {
     val allArguments = task.arguments ++ (task.name map { name =>
       Argument("name", Seq(StringArgument(name)))
     })
     // Convert the arguments list to a map.
-    val argumentsMap = (allArguments map { argument => argument.name -> argument }).toMap
+    val argumentsMap = (allArguments map { argument =>
+      val newValues = argument.values map {
+        case RawTaskArgument(rawTask) => TaskArgument(validateTask(rawTask, filename, contents))
+        case other => other
+      }
+      argument.copy(values = newValues)
+    } map { argument => argument.name -> argument }).toMap
     if (argumentsMap.size != task.arguments.size + 1) {
       // Figure out if any arguments were specified twice.
       val specifiedNames = task.arguments groupBy { _.name }
@@ -84,19 +92,61 @@ class BuildParser extends RegexParsers {
         case Some(name) => s"""argument "$name" was provided multiple times"""
         case None => """"name" was provided as named argument and default argument"""
       }
-      err(errorMessage)
+      throw new ConfigException(exceptionMessage(errorMessage, filename, contents, task.pos))
     } else {
-      success(FlatTask(task.taskType, argumentsMap))
+      FlatTask(task.taskType, argumentsMap)
     }
   }
 
   /** Task, e.g. `task_type("name", arg1 = "args", arg2 = ["etc"])` */
-  def task: Parser[FlatTask] = taskWithName | taskOnlyArgs
+  def task: Parser[RawTask] = positioned { taskWithName | taskOnlyArgs }
 
   /** Whole file - any number of tasks. */
-  def buildFile: Parser[Seq[FlatTask]] = task.*
+  def buildFile: Parser[Seq[RawTask]] = task.*
 
-  def parseBuildFile(infile: String): ParseResult[Seq[FlatTask]] = {
-    parseAll(buildFile, infile)
+  /** Translates a ParseResult, throwing a ConfigException if there was a parsing problem. */
+  def extractResult[T](filename: String, result: ParseResult[T]): T = {
+    result match {
+      case Success(tasks, _) => tasks
+      case NoSuccess(message, next) => {
+        throw new ConfigException(
+          exceptionMessage(message, filename, next.source.toString, next.pos)
+        )
+      }
+    }
+  }
+
+  /** Generate a useful exception message from parse data.
+    * @param message the base failure message
+    * @param filename the name of the file being parsed
+    * @param contents the file contents as a string
+    * @param position the position in the file of the error
+    * @return an exception message with a pointer to the error line
+    */
+  def exceptionMessage(
+    message: String,
+    filename: String,
+    contents: String,
+    position: Position
+  ): String = {
+    // Basic error message.
+    val infoLine = s"$filename:${position.line}: $message"
+    // Line of code the error happened at.
+    val line = contents.split("\r?\n").take(position.line).last
+    // Pointer to the character the error happened at.
+    val pointer = " " * (position.column - 1) + '^'
+
+    s"$infoLine\n$line\n$pointer"
+  }
+
+  private[parser] def parseBuildFileInternal(filename: String, contents: String): Seq[FlatTask] = {
+    extractResult(filename, parseAll(buildFile, contents)) map { task =>
+      validateTask(task, filename, contents)
+    }
+  }
+
+  /** Parses a given build file. */
+  def parseBuildFile(infile: File): Seq[FlatTask] = {
+    parseBuildFileInternal(infile.getAbsolutePath, Source.fromFile(infile).mkString)
   }
 }

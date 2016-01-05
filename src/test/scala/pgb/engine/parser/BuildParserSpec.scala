@@ -1,11 +1,12 @@
 package pgb.engine.parser
 
-import pgb.UnitSpec
+import pgb.{ ConfigException, UnitSpec }
 
 import org.scalatest.matchers.Matcher
 
 /** Tests for the build file parser. */
 class BuildParserSpec extends UnitSpec {
+  val filename = "/home/jkinkead/build.pgb"
 
   val testParser = new BuildParser
   import testParser.{ Error, Failure, ParseResult, Success }
@@ -66,11 +67,11 @@ class BuildParserSpec extends UnitSpec {
   }
 
   trait TaskFixture {
-    val fooName = Map("name" -> Argument("name", Seq(StringArgument("./foo.txt"))))
-    val barName = Map("name" -> Argument("name", Seq(StringArgument("bar"))))
+    val fooName = Some("./foo.txt")
+    val barName = Some("bar")
 
-    val fooTask = FlatTask("file", fooName)
-    val barTask = FlatTask("file", barName)
+    val fooTask = RawTask("file", fooName, Seq.empty)
+    val barTask = RawTask("file", barName, Seq.empty)
   }
 
   "task" should "parse a task with just a name" in new TaskFixture {
@@ -84,12 +85,12 @@ class BuildParserSpec extends UnitSpec {
       """file("./foo.txt", one = "one", two = ["t", "w", "o"])"""
     )
     result should beSuccess(
-      FlatTask(
+      RawTask(
         "file",
-        fooName ++ Map(
-          "one" -> Argument("one", Seq(StringArgument("one"))),
-          "two" ->
-            Argument("two", Seq(StringArgument("t"), StringArgument("w"), StringArgument("o")))
+        fooName,
+        Seq(
+          Argument("one", Seq(StringArgument("one"))),
+          Argument("two", Seq(StringArgument("t"), StringArgument("w"), StringArgument("o")))
         )
       )
     )
@@ -98,11 +99,10 @@ class BuildParserSpec extends UnitSpec {
   it should "parse a task with task arguments" in new TaskFixture {
     val result = testParser.parseAll(testParser.task, """file("./foo.txt", arg = file("bar"))""")
     result should beSuccess(
-      FlatTask(
+      RawTask(
         "file",
-        fooName ++ Map(
-          "arg" -> Argument("arg", Seq(TaskArgument(barTask)))
-        )
+        fooName,
+        Seq(Argument("arg", Seq(RawTaskArgument(barTask))))
       )
     )
   }
@@ -120,30 +120,24 @@ class BuildParserSpec extends UnitSpec {
     result should beSuccess(fooTask)
   }
 
-  it should "detect duplicate arguments" in {
-    val result = testParser.parseAll(testParser.task, """file("bar", arg = "a", arg = "b")""")
-    result should includeFailureMessage("""argument "arg"""")
-  }
-
-  it should "detect duplicate name arguments" in {
-    val result = testParser.parseAll(testParser.task, """file("bar", name = "a", arg = "b")""")
-    result should includeFailureMessage(""""name" was provided""")
-  }
-
-  "parseBuildFile" should "handle a simple file" in new TaskFixture {
-    val result = testParser.parseBuildFile("""
+  "parseBuildFileInternal" should "handle a simple file" in new TaskFixture {
+    val result = testParser.parseBuildFileInternal(filename, """
       # A whole build file.
       file("./foo.txt")
 
       file("bar", arg=task("foo"))
       # Done!
     """)
-    result should beSuccess(
+    result should be(
       Seq(
-        fooTask,
         FlatTask(
           "file",
-          barName ++ Map(
+          Map("name" -> Argument("name", Seq(StringArgument("./foo.txt"))))
+        ),
+        FlatTask(
+          "file",
+          Map(
+            "name" -> Argument("name", Seq(StringArgument("bar"))),
             "arg" -> Argument("arg", Seq(TaskArgument(
               FlatTask("task", Map("name" -> Argument("name", Seq(StringArgument("foo")))))
             )))
@@ -151,5 +145,19 @@ class BuildParserSpec extends UnitSpec {
         )
       )
     )
+  }
+
+  it should "detect duplicate arguments" in {
+    val exception = intercept[ConfigException] {
+      testParser.parseBuildFileInternal(filename, """file("bar", arg = "a", arg = "b")""")
+    }
+    exception.getMessage should include("""argument "arg"""")
+  }
+
+  it should "detect duplicate name arguments" in {
+    val exception = intercept[ConfigException] {
+      testParser.parseBuildFileInternal(filename, """file("bar", name = "a", arg = "b")""")
+    }
+    exception.getMessage should include(""""name" was provided""")
   }
 }
