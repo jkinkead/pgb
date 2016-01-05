@@ -4,4 +4,4 @@ package pgb.engine.parser
   * @param taskType the task type being invoked, e.g. "file"
   * @param arguments the arguments to the task, including any task name
   */
-case class FlatTask(taskType: String, arguments: Map[String, Argument])
+case class FlatTask(taskType: String, arguments: Map[String, Argument]) extends FilePositional
