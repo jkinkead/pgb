@@ -1,5 +1,7 @@
 package pgb.engine.parser
 
+import pgb.ConfigException
+
 import scala.util.parsing.input.Positional
 
 /** Trait that stores file info along with file position, and has a helper to generate exception
@@ -18,8 +20,17 @@ trait FilePositional extends Positional {
     contents = newContents
   }
 
+  /** Generates a useful exception message from the stored file data, and throws the resulting
+    * exception.
+    * @param baseMessage the base failure message
+    */
+  def configException(baseMessage: String): Nothing = {
+    val message = Util.exceptionMessage(baseMessage, filename, contents, pos)
+    throw new ConfigException(message)
+  }
+
   /** Generates a useful exception message from the stored file data.
-    * @param message the base failure message
+    * @param baseMessage the base failure message
     * @return an exception message with a pointer to the error line
     */
   def exceptionMessage(baseMessage: String): String = {
