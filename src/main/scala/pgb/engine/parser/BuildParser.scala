@@ -68,19 +68,37 @@ class BuildParser extends RegexParsers {
 
   /** Validates a raw task, converting it into a FlatTask, or throwing a ConfigException. */
   def validateTask(task: RawTask, filename: String, contents: String): FlatTask = {
-    val allArguments = task.arguments ++ (task.name map { name =>
-      Argument("name", Seq(StringArgument(name)))
-    })
     // Convert the arguments list to a map.
-    val argumentsMap = (allArguments map { argument =>
+    val argumentsMap: Map[String, Argument] = (task.arguments map { argument =>
       val newValues = argument.values map {
         case RawTaskArgument(rawTask) => TaskArgument(validateTask(rawTask, filename, contents))
         case other => other
       }
       argument.copy(values = newValues)
     } map { argument => argument.name -> argument }).toMap
-    if (argumentsMap.size != task.arguments.size + 1) {
-      // Figure out if any arguments were specified twice.
+    // Validate that "name" contains only one value, if it's in the argument map.
+    val argumentsName = argumentsMap.get("name") map { name =>
+      val errorMessageOption = if (name.values.size != 1) {
+        if (name.values.size > 1) {
+          Some(""""name" argument contained multiple values""")
+        } else {
+          Some(""""name" argument contained no values""")
+        }
+      } else if (!name.values.head.isInstanceOf[StringArgument]) {
+        Some(""""name" argument contained a non-literal value""")
+      } else if (task.name.nonEmpty) {
+        Some(""""name" was provided as named argument and default argument""")
+      } else {
+        None
+      }
+      errorMessageOption foreach { message =>
+        throw new ConfigException(Util.exceptionMessage(message, filename, contents, task.pos))
+      }
+      name.values.head.asInstanceOf[StringArgument].value
+    }
+
+    // Validate that no arguments were specified twice.
+    if (argumentsMap.size != task.arguments.size) {
       val specifiedNames = task.arguments groupBy { _.name }
       val duplicateOption = specifiedNames find {
         case (_, values) => values.length > 1
@@ -88,17 +106,16 @@ class BuildParser extends RegexParsers {
         case (name, values) => name
       }
 
-      val errorMessage = duplicateOption match {
-        case Some(name) => s"""argument "$name" was provided multiple times"""
-        case None => """"name" was provided as named argument and default argument"""
-      }
+      val errorMessage = s"""argument "${duplicateOption.get}" was provided multiple times"""
       throw new ConfigException(Util.exceptionMessage(errorMessage, filename, contents, task.pos))
-    } else {
-      val newTask = FlatTask(task.taskType, argumentsMap)
-      newTask.setPos(task.pos)
-      newTask.setFileInfo(filename, contents)
-      newTask
     }
+
+    val name = task.name orElse { argumentsName }
+
+    val newTask = FlatTask(task.taskType, name, argumentsMap - "name")
+    newTask.setPos(task.pos)
+    newTask.setFileInfo(filename, contents)
+    newTask
   }
 
   /** Task, e.g. `task_type("name", arg1 = "args", arg2 = ["etc"])` */
