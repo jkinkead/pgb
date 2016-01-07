@@ -28,15 +28,4 @@ trait FilePositional extends Positional {
     val message = Util.exceptionMessage(baseMessage, filename, contents, pos)
     throw new ConfigException(message)
   }
-
-  /** Generates a useful exception message from the stored file data.
-    * @param baseMessage the base failure message
-    * @return an exception message with a pointer to the error line
-    */
-  def exceptionMessage(baseMessage: String): String = {
-    if (filename == null || contents == null) {
-      throw new IllegalStateException("exceptionMessage called with file state data unset")
-    }
-    Util.exceptionMessage(baseMessage, filename, contents, pos)
-  }
 }
