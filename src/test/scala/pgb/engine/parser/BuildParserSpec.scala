@@ -9,14 +9,13 @@ class BuildParserSpec extends UnitSpec {
   val filename = "/home/jkinkead/build.pgb"
 
   val testParser = new BuildParser
-  import testParser.{ Error, Failure, ParseResult, Success }
+  import testParser.{ NoSuccess, ParseResult, Success }
 
   /** @return the successful parse result, or a failure if it's in error */
   def success[T](result: ParseResult[T]): T = {
     result match {
       case Success(parsedValue, _) => parsedValue
-      case Failure(message, _) => fail(message)
-      case Error(message, _) => fail(message)
+      case NoSuccess(message, _) => fail(message)
     }
   }
 
@@ -29,8 +28,7 @@ class BuildParserSpec extends UnitSpec {
   def failure(result: ParseResult[_]): String = {
     result match {
       case Success(parsedValue, _) => fail("successfully parsed: " + parsedValue)
-      case Failure(message, _) => message
-      case Error(message, _) => message
+      case NoSuccess(message, _) => message
     }
   }
 
@@ -132,14 +130,15 @@ class BuildParserSpec extends UnitSpec {
       Seq(
         FlatTask(
           "file",
-          Map("name" -> Argument("name", Seq(StringArgument("./foo.txt"))))
+          fooName,
+          Map.empty
         ),
         FlatTask(
           "file",
+          barName,
           Map(
-            "name" -> Argument("name", Seq(StringArgument("bar"))),
             "arg" -> Argument("arg", Seq(TaskArgument(
-              FlatTask("task", Map("name" -> Argument("name", Seq(StringArgument("foo")))))
+              FlatTask("task", Some("foo"), Map.empty)
             )))
           )
         )
@@ -159,5 +158,26 @@ class BuildParserSpec extends UnitSpec {
       testParser.parseBuildFileInternal(filename, """file("bar", name = "a", arg = "b")""")
     }
     exception.getMessage should include(""""name" was provided""")
+  }
+
+  it should "detect multi-valued name arguments" in {
+    val exception = intercept[ConfigException] {
+      testParser.parseBuildFileInternal(filename, """file(name = ["a", "b"], arg = "b")""")
+    }
+    exception.getMessage should include(""""name" argument contained multiple""")
+  }
+
+  it should "detect empty name arguments" in {
+    val exception = intercept[ConfigException] {
+      testParser.parseBuildFileInternal(filename, """file(name = [], arg = "b")""")
+    }
+    exception.getMessage should include(""""name" argument contained no""")
+  }
+
+  it should "detect name arguments with non-literal values" in {
+    val exception = intercept[ConfigException] {
+      testParser.parseBuildFileInternal(filename, """file(name = file("foo"), arg = "b")""")
+    }
+    exception.getMessage should include(""""name" argument contained a non-literal""")
   }
 }
