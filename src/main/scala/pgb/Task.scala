@@ -1,5 +1,7 @@
 package pgb
 
+import java.net.URI
+
 /** A single task in the build system.
   * @tparam O the type of the task's output
   */
@@ -15,7 +17,7 @@ trait Task[O <: Artifact] {
     * @throws ExecutionException if there was a problem executing the task
     */
   def execute(
-    name: String,
+    name: URI,
     arguments: Map[String, Seq[Input]],
     previousOutput: Option[O]
   ): O
