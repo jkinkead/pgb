@@ -43,22 +43,25 @@ loadBuildfiles(
 
 For targets specified:
 phase 4 - trivial verification of targets: do they exist in the build?
-foreach target:
-phase 5 - is task a task ref?
-  -> if yes and task is in an unloaded build file:
-    loadBuildfiles(task_build_file,
-      currBuild.copy(includes = includes - task_build_file)
-    )
-  -> replace current task with loaded version; error if not found
-phase 6 - is task type defined?
-  -> if not and currBuild.includes.nonEmpty:
-      loadBuildfiles(currBuild.includes, currBuild.copy(includes = Seq.empty));
-      goto phase 5 (loop until resolves or error)
-  -> if not and no includes, raise error
-phase 7 - argument verification - foreach argument in task:
-  -> if not task (string literal with implicit type), check implementation for type
-  -> goto phase 5
-  -> validate argument name + type with task implementation
+
+foreach target, call validateTask:
+
+validateTask(task: FlatTask): TaskNode
+  phase 5 - is task a task ref?
+    -> if yes and task is in an unloaded build file:
+      loadBuildfiles(task_build_file,
+        currBuild.copy(includes = includes - task_build_file)
+      )
+    -> replace current task with loaded version; error if not found
+  phase 6 - is task type defined?
+    -> if not and currBuild.includes.nonEmpty:
+        loadBuildfiles(currBuild.includes, currBuild.copy(includes = Seq.empty));
+        goto phase 5 (loop until resolves or error)
+    -> if not and no includes, raise error
+  phase 7 - argument verification - foreach argument in task:
+    -> if not task (string literal with implicit type), check implementation for type
+    -> goto phase 5
+    -> validate argument name + type with task implementation
 
 ---
 
