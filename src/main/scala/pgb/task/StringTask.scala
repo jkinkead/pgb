@@ -8,8 +8,12 @@ import java.net.URI
 object StringTask extends Task[StringArtifact] {
   /** @return the name of this task */
   override def execute(
-    name: URI,
+    name: Option[String],
+    buildRoot: URI,
     arguments: Map[String, Seq[Input]],
     previousOutput: Option[StringArtifact]
-  ): StringArtifact = StringArtifact(name.getFragment)
+  ): StringArtifact = {
+    // TODO: Require name.
+    StringArtifact(name.get)
+  }
 }

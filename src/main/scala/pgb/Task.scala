@@ -10,6 +10,7 @@ trait Task[O <: Artifact] {
     * it's still present. This will be invoked only after all inputs in all arguments have completed
     * execution.
     * @param name the special name argument for the task
+    * @param buildRoot the root of this task's build file
     * @param arguments all non-name arguments for the task
     * @param previousOutput if set, the result of the last run of this task
     * @return the output(s) for this task
@@ -17,7 +18,8 @@ trait Task[O <: Artifact] {
     * @throws ExecutionException if there was a problem executing the task
     */
   def execute(
-    name: URI,
+    name: Option[String],
+    buildRoot: URI,
     arguments: Map[String, Seq[Input]],
     previousOutput: Option[O]
   ): O
