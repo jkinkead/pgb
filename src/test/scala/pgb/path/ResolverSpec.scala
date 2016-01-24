@@ -17,10 +17,12 @@ class ResolverSpec extends UnitSpec with BeforeAndAfter {
     Files.createDirectory(tempRoot.resolve("src"))
     Files.createDirectory(tempRoot.resolve("src/main"))
     Files.createDirectory(tempRoot.resolve("src/main/scala"))
+    Files.createDirectory(tempRoot.resolve("src/main/java"))
     Files.createFile(tempRoot.resolve("foo.txt"))
     Files.createFile(tempRoot.resolve("bar.txt"))
     Files.createFile(tempRoot.resolve("src/foo.txt"))
     Files.createFile(tempRoot.resolve("src/main/scala/Foo.scala"))
+    Files.createFile(tempRoot.resolve("src/main/java/Foo.java"))
 
     val buildRoot = Files.createFile(tempRoot.resolve("build.pgb"))
     buildUri = buildRoot.toUri
@@ -127,8 +129,7 @@ class ResolverSpec extends UnitSpec with BeforeAndAfter {
     results shouldBe Seq(tempRoot.resolve("bar.txt").toFile)
   }
 
-  // TODO: This requires updating the lookbehind code per the TODO in Resolver.scala.
-  ignore should "resolve an empty lookbehind path" in {
+  it should "resolve an empty lookbehind path" in {
     val newRoot = tempRoot.resolve("src/main/scala")
     val results = Resolver.resolvePath(".../gaz.txt", newRoot.toUri)
     results shouldBe Seq.empty
@@ -162,6 +163,27 @@ class ResolverSpec extends UnitSpec with BeforeAndAfter {
     results.sorted shouldBe expected.sorted
   }
 
+  it should "resolve nested globs" in {
+    val results = Resolver.resolvePath("**/Foo.*", buildUri)
+    val expected = Seq(
+      tempRoot.resolve("src/main/scala/Foo.scala").toFile,
+      tempRoot.resolve("src/main/java/Foo.java").toFile
+    )
+    results.sorted shouldBe expected.sorted
+  }
+
+  it should "resolve directories" in {
+    val results = Resolver.resolvePath("**/*a*", buildUri)
+    val expected = Seq(
+      tempRoot.resolve("src/main").toFile,
+      tempRoot.resolve("src/main/java").toFile,
+      tempRoot.resolve("src/main/java/Foo.java").toFile,
+      tempRoot.resolve("src/main/scala").toFile,
+      tempRoot.resolve("src/main/scala/Foo.scala").toFile
+    )
+    results.sorted shouldBe expected.sorted
+  }
+
   it should "throw an exception if given a relative build root" in {
     val exception = intercept[IllegalArgumentException] {
       // Badly-formatted URI encoding.
@@ -184,7 +206,7 @@ class ResolverSpec extends UnitSpec with BeforeAndAfter {
 
   it should "throw an exception if given a path that resolves to no files" in {
     val exception = intercept[ConfigException] {
-      Resolver.resolveSingleFilePath("**.java", buildUri)
+      Resolver.resolveSingleFilePath("**.sc", buildUri)
     }
     exception.getMessage should include("resolved to no files")
   }
