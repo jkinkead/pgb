@@ -2,6 +2,24 @@ package pgb
 
 import java.net.URI
 
+/** Contains helper classes for Task. */
+object Task {
+  /** Represents a task's output type. */
+  sealed trait Type
+  /** Type for a task producing strings. */
+  case object StringType extends Type {
+    override def toString(): String = "string"
+  }
+  /** Type for a task producing files. */
+  case object FileType extends Type {
+    override def toString(): String = "files"
+  }
+  /** Type for a task producing no output. */
+  case object NoType extends Type {
+    override def toString(): String = "(none)"
+  }
+}
+
 /** A single task in the build system.
   * @tparam O the type of the task's output
   */
@@ -23,4 +41,30 @@ trait Task[O <: Artifact] {
     arguments: Map[String, Seq[Input]],
     previousOutput: Option[O]
   ): O
+
+  /** Return the type of this task. */
+  def taskType: Task.Type
+
+  /** Return all of the expected task argument's types. Any arguments of the names returned will be
+    * implicitly converted to the type they are paired with.
+    * @return the expected names and types of this task's arguments
+    */
+  def argumentTypes: Map[String, Task.Type] = Map.empty
+
+  /** If this returns false, unexpected arguments (those not in `argumentTypes`) will be considered
+    * errors when parsing.
+    */
+  def allowUnknownArguments: Boolean = false
+}
+
+/** Task with file output. */
+trait FileOutputTask extends Task[FilesArtifact] {
+  final override val taskType: Task.Type = Task.FileType
+
+  // TODO: Consider adding helper execute method here so that subclasses can ignore FilesArtifact.
+}
+
+/** Task with string output. */
+trait StringOutputTask extends Task[StringArtifact] {
+  final override val taskType: Task.Type = Task.StringType
 }

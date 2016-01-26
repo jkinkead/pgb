@@ -1,12 +1,12 @@
 package pgb.task
 
-import pgb.{ ConfigException, FilesArtifact, Input, Task }
+import pgb.{ ConfigException, FileOutputTask, FilesArtifact, Input }
 import pgb.path.Resolver
 
 import java.net.URI
 
 /** A task that generates a single file based on a path. */
-object FileTask extends Task[FilesArtifact] {
+object FileTask extends FileOutputTask {
   /** @return the single file pointed to by the name of this task
     * @throws ConfigException if the path doesn't resolve to exactly one file
     */
