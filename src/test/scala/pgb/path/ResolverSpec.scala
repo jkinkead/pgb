@@ -32,33 +32,6 @@ class ResolverSpec extends UnitSpec with BeforeAndAfter {
     Delete.delete(tempRoot)
   }
 
-  "FileGlob" should "match a basic path correctly" in {
-    val path = "src/main/scala/**/*.scala"
-    val matchOption = Resolver.FileGlob.findFirstMatchIn(path)
-    matchOption shouldBe 'nonEmpty
-    val m = matchOption.get
-    m.before shouldBe "src/main/scala"
-    path.substring(m.start) shouldBe "/**/*.scala"
-  }
-
-  it should "match a path starting with a glob" in {
-    val path = "**/*.java"
-    val matchOption = Resolver.FileGlob.findFirstMatchIn(path)
-    matchOption shouldBe 'nonEmpty
-    val m = matchOption.get
-    m.before shouldBe ""
-    path.substring(m.start) shouldBe "**/*.java"
-  }
-
-  it should "match an escaped path correctly" in {
-    val path = """src/ma\*in/scala/*.scala"""
-    val matchOption = Resolver.FileGlob.findFirstMatchIn(path)
-    matchOption shouldBe 'nonEmpty
-    val m = matchOption.get
-    m.before shouldBe """src/ma\*in/scala"""
-    path.substring(m.start) shouldBe "/*.scala"
-  }
-
   "toPathUri" should "fail on opaque paths" in {
     val exception = intercept[ConfigException] {
       Resolver.toPathUri("file:src/foo.scala")

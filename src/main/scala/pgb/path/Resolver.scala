@@ -22,8 +22,7 @@ object Resolver {
   // TODO: Inject as constructor parameter.
   val ValidSchemes = Set("file")
 
-  /** Regex to match a path with a glob. The match starts after the last path separator. */
-  val FileGlob = """(?:^|/)[^/]*?(?<=[^\\])[*{\[?]""".r.unanchored
+  val LookbehindPrefix = "..." + File.separator
 
   val filesystem: FileSystem = FileSystems.getDefault
 
@@ -72,8 +71,8 @@ object Resolver {
     // TODO: Delegate to Scheme implementation.
     val rootDirectory = Paths.get(buildRoot.resolve("."))
 
-    val rawFiles = if (path.startsWith(".../")) {
-      val searchPath = path.stripPrefix(".../")
+    val rawFiles = if (path.startsWith(LookbehindPrefix)) {
+      val searchPath = path.stripPrefix(LookbehindPrefix)
 
       // TODO: Delegate to Scheme implementation?
       var searchRoot = rootDirectory
