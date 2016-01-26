@@ -4,9 +4,7 @@ import pgb.ConfigException
 
 import java.io.File
 import java.net.{ URI, URISyntaxException }
-import java.nio.file.{ FileSystem, FileSystems, Files, Paths }
-
-import scala.collection.JavaConverters._
+import java.nio.file.Paths
 
 /** Class to handle manipulating pgb paths.
   *
@@ -23,8 +21,6 @@ object Resolver {
   val ValidSchemes = Set("file")
 
   val LookbehindPrefix = "..." + File.separator
-
-  val filesystem: FileSystem = FileSystems.getDefault
 
   /** Given a path and a root, returns the file this path points to. This will throw an exception if
     * the provided path doesn't resolve to exactly one file.
