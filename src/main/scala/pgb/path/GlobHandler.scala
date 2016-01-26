@@ -21,7 +21,7 @@ import scala.collection.mutable
   * is an edge case, though, and likely doesn't need to be efficient.
   */
 object GlobHandler {
-  // TODO: Will the default always work???
+  // Note that this assumes we won't ever have multiple file systems running in the same build.
   val fileSystem = FileSystems.getDefault
 
   class Visitor(pattern: String, baseDirectory: Path) extends SimpleFileVisitor[Path] {
