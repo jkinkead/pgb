@@ -56,12 +56,12 @@ class BuildParserSpec extends UnitSpec {
 
   "argument" should "parse a string-valued argument" in {
     val result = testParser.parseAll(testParser.argument, """foo = "./bar.txt" """)
-    result should beSuccess(Argument("foo", Seq(StringArgument("./bar.txt"))))
+    result should beSuccess("foo" -> Seq[RawArgument](StringArgument("./bar.txt")))
   }
 
   it should "parse an argument with multiple string values" in {
     val result = testParser.parseAll(testParser.argument, """foo = ["bar", "gaz"]""")
-    result should beSuccess(Argument("foo", Seq(StringArgument("bar"), StringArgument("gaz"))))
+    result should beSuccess("foo" -> Seq[RawArgument](StringArgument("bar"), StringArgument("gaz")))
   }
 
   trait TaskFixture {
@@ -87,8 +87,8 @@ class BuildParserSpec extends UnitSpec {
         "file",
         fooName,
         Seq(
-          Argument("one", Seq(StringArgument("one"))),
-          Argument("two", Seq(StringArgument("t"), StringArgument("w"), StringArgument("o")))
+          "one" -> Seq(StringArgument("one")),
+          "two" -> Seq(StringArgument("t"), StringArgument("w"), StringArgument("o"))
         )
       )
     )
@@ -100,7 +100,7 @@ class BuildParserSpec extends UnitSpec {
       RawTask(
         "file",
         fooName,
-        Seq(Argument("arg", Seq(RawTaskArgument(barTask))))
+        Seq("arg" -> Seq(RawTaskArgument(barTask)))
       )
     )
   }
@@ -137,9 +137,9 @@ class BuildParserSpec extends UnitSpec {
           "file",
           barName,
           Map(
-            "arg" -> Argument("arg", Seq(TaskArgument(
+            "arg" -> Seq(TaskArgument(
               FlatTask("task", Some("foo"), Map.empty)
-            )))
+            ))
           )
         )
       )

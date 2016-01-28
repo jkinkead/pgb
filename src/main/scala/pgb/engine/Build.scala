@@ -54,7 +54,6 @@ class Build(parser: BuildParser, workingDir: URI) {
     )
     val emptyBuild = FlatBuild(Map.empty, Set.empty, Set.empty, Map.empty)
     val flatBuild = buildFileUris.distinct.foldLeft(emptyBuild) { loadBuildFile }
-    val initialGraph = new BuildGraph(Map.empty, flatBuild)
 
     val buildGraph = targets.foldLeft(new BuildGraph(Map.empty, flatBuild)) {
       case (graph, target) => validateTopLevelTask(target, graph)
@@ -166,14 +165,14 @@ class Build(parser: BuildParser, workingDir: URI) {
       // Validate task arguments into new nodes. We also track any updates to the build graph.
       var currGraph = buildGraph
       val arguments: Map[String, Seq[BuildNode]] = flatTask.arguments map {
-        case (name, argument) => {
+        case (name, argumentValues) => {
           val expectedTypeOption = taskImpl.argumentTypes.get(name)
           // If the task doesn't allow unknown arguments, and this is an unknown argument, throw an
           // exception.
           if (expectedTypeOption.isEmpty && !taskImpl.allowUnknownArguments) {
             flatTask.configException(s""""${flatTask.taskType}" given unknown argument "$name"""")
           }
-          val newValues = argument.values map {
+          val newValues = argumentValues map {
             case StringArgument(value) => {
               // Implicitly convert barewords to the appropriate type.
               val taskType = expectedTypeOption match {
@@ -198,10 +197,6 @@ class Build(parser: BuildParser, workingDir: URI) {
               }
               currGraph = updatedGraph
               node
-            }
-            case badArg: RawTaskArgument => {
-              // Shouldn't happen - this is used internally in the parser.
-              throw new ExecutionException(s"unexpected RawTaskArgument: $badArg")
             }
           }
           name -> newValues

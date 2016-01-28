@@ -7,5 +7,8 @@ import scala.util.parsing.input.Positional
   * @param name the name of the task. May be specified later as a named argument.
   * @param arguments the arguments to the task
   */
-case class RawTask(taskType: String, name: Option[String], arguments: Seq[Argument])
-  extends Positional
+private[parser] case class RawTask(
+  taskType: String,
+  name: Option[String],
+  arguments: Seq[(String, Seq[RawArgument])]
+) extends Positional

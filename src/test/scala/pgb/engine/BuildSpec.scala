@@ -12,7 +12,7 @@ import java.nio.file.{ Files, Path, Paths }
 /** Tests for the Build class. */
 class BuildSpec extends UnitSpec with BeforeAndAfter {
   /** Test FlatTask that doesn't rely on positional data to generate exception messages. */
-  class TestFlatTask(taskType: String, name: Option[String], arguments: Map[String, Argument])
+  class TestFlatTask(taskType: String, name: Option[String], arguments: Map[String, Seq[Argument]])
       extends FlatTask(taskType, name, arguments) {
     /** Throws a config exception with the given error message. */
     override def configException(str: String): Nothing = throw new ConfigException(str)
@@ -57,7 +57,7 @@ class BuildSpec extends UnitSpec with BeforeAndAfter {
 
   it should "throw an exception if the task has extra arguments" in {
     val badInclude = new TestFlatTask(
-      "include", Some("foo.pgb"), Map("foo" -> Argument("foo", Seq.empty))
+      "include", Some("foo.pgb"), Map("foo" -> Seq.empty)
     )
     val exception = intercept[ConfigException] {
       testBuild.validateReferenceTask(badInclude)

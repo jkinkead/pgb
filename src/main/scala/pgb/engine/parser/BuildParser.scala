@@ -40,17 +40,19 @@ class BuildParser extends RegexParsers {
   val taskArgument: Parser[RawTaskArgument] = task ^^ { RawTaskArgument(_) }
 
   /** Any argument value. */
-  val argumentValue: Parser[ArgumentValue] = stringArgument | taskArgument
+  val argumentValue: Parser[RawArgument] = stringArgument | taskArgument
 
   /** List of arguments, as a javascript-style array. */
-  val argumentValueList: Parser[Seq[ArgumentValue]] = "[" ~> repsep(argumentValue, ",") <~ "]"
+  val argumentValueList: Parser[Seq[RawArgument]] = "[" ~> repsep(argumentValue, ",") <~ "]"
 
   /** Single argument value, converted into a one-element sequence. */
-  val singleArgumentValue: Parser[Seq[ArgumentValue]] = argumentValue ^^ { Seq(_) }
+  val singleArgumentValue: Parser[Seq[RawArgument]] = argumentValue ^^ { Seq(_) }
 
   /** Parses an argument of the form `name = "value"` or `name = [ "val1", "val2" ]`. */
-  val argument: Parser[Argument] = (name <~ "=") ~ (singleArgumentValue | argumentValueList) ^^ {
-    case name ~ args => Argument(name, args)
+  val argument: Parser[(String, Seq[RawArgument])] = {
+    (name <~ "=") ~ (singleArgumentValue | argumentValueList) ^^ {
+      case name ~ values => name -> values
+    }
   }
 
   /** A task with the name as a first anonymous argument. */
@@ -69,22 +71,24 @@ class BuildParser extends RegexParsers {
   /** Validates a raw task, converting it into a FlatTask, or throwing a ConfigException. */
   def validateTask(task: RawTask, filename: String, contents: String): FlatTask = {
     // Convert the arguments list to a map.
-    val argumentsMap: Map[String, Argument] = (task.arguments map { argument =>
-      val newValues = argument.values map {
-        case RawTaskArgument(rawTask) => TaskArgument(validateTask(rawTask, filename, contents))
-        case other => other
+    val argumentsMap: Map[String, Seq[Argument]] = (task.arguments map {
+      case (name, values) => {
+        val newValues: Seq[Argument] = values map {
+          case RawTaskArgument(rawTask) => TaskArgument(validateTask(rawTask, filename, contents))
+          case other: StringArgument => other
+        }
+        name -> newValues
       }
-      argument.copy(values = newValues)
-    } map { argument => argument.name -> argument }).toMap
+    }).toMap
     // Validate that "name" contains only one value, if it's in the argument map.
     val argumentsName = argumentsMap.get("name") map { name =>
-      val errorMessageOption = if (name.values.size != 1) {
-        if (name.values.size > 1) {
+      val errorMessageOption = if (name.size != 1) {
+        if (name.size > 1) {
           Some(""""name" argument contained multiple values""")
         } else {
           Some(""""name" argument contained no values""")
         }
-      } else if (!name.values.head.isInstanceOf[StringArgument]) {
+      } else if (!name.head.isInstanceOf[StringArgument]) {
         Some(""""name" argument contained a non-literal value""")
       } else if (task.name.nonEmpty) {
         Some(""""name" was provided as named argument and default argument""")
@@ -94,12 +98,12 @@ class BuildParser extends RegexParsers {
       errorMessageOption foreach { message =>
         throw new ConfigException(Util.exceptionMessage(message, filename, contents, task.pos))
       }
-      name.values.head.asInstanceOf[StringArgument].value
+      name.head.asInstanceOf[StringArgument].value
     }
 
     // Validate that no arguments were specified twice.
     if (argumentsMap.size != task.arguments.size) {
-      val specifiedNames = task.arguments groupBy { _.name }
+      val specifiedNames = task.arguments groupBy { case (name, _) => name }
       val duplicateOption = specifiedNames find {
         case (_, values) => values.length > 1
       } map {

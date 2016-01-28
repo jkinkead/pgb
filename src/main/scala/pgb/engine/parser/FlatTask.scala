@@ -5,5 +5,5 @@ package pgb.engine.parser
   * @param name the name of the task. If unset, the name will not appear in `arguments`.
   * @param arguments the arguments to the task
   */
-case class FlatTask(taskType: String, name: Option[String], arguments: Map[String, Argument])
+case class FlatTask(taskType: String, name: Option[String], arguments: Map[String, Seq[Argument]])
   extends FilePositional

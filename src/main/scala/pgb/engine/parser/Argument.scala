@@ -1,10 +1,16 @@
 package pgb.engine.parser
 
-/** The value of a named argument. Can be either a string or a task. */
-sealed abstract class ArgumentValue
-case class StringArgument(value: String) extends ArgumentValue
-case class TaskArgument(value: FlatTask) extends ArgumentValue
-case class RawTaskArgument(value: RawTask) extends ArgumentValue
+/** An partially-parsed argument. Used internally by the parser. */
+private[parser] sealed trait RawArgument
 
-/** An argument to a task parsed from a build file. */
-case class Argument(name: String, values: Seq[ArgumentValue])
+/** The value of a named argument. Can be either a string or a task. */
+sealed trait Argument
+
+/** A bareword string argument. */
+case class StringArgument(value: String) extends Argument with RawArgument
+
+/** A partially-parsed task argument, used internally by the parser. */
+private[parser] case class RawTaskArgument(value: RawTask) extends RawArgument
+
+/** A fully-parsed task argument. */
+case class TaskArgument(value: FlatTask) extends Argument
