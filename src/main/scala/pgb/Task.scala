@@ -24,6 +24,9 @@ object Task {
   * @tparam O the type of the task's output
   */
 trait Task[O <: Artifact] {
+  /** Return the name of this task, as it would appear in a build file. */
+  def taskName: String
+
   /** Runs a task with arguments specified in the build file, and the result of the previous run, if
     * it's still present. This will be invoked only after all inputs in all arguments have completed
     * execution.
@@ -67,4 +70,6 @@ trait FileOutputTask extends Task[FilesArtifact] {
 /** Task with string output. */
 trait StringOutputTask extends Task[StringArtifact] {
   final override val taskType: Task.Type = Task.StringType
+
+  // TODO: Consider adding helper execute method here so that subclasses can ignore StringArtifact.
 }

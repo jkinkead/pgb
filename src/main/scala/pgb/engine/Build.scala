@@ -10,6 +10,8 @@ import java.net.URI
 import java.util.{ Map => JavaMap }
 import java.util.concurrent.ConcurrentHashMap
 
+import scala.collection.mutable
+
 /** Class responsible for managing a pgb build.
   * @param parser the parser to use in parsing build files
   * @param workingDir the working directory of the application, as a URI
@@ -18,10 +20,9 @@ class Build(parser: BuildParser, workingDir: URI) {
   /** Mutable task registry. Should only be updated through TaskDef and in this class. */
   private[pgb] val taskRegistry: JavaMap[String, Task[_]] = {
     val registry = new ConcurrentHashMap[String, Task[_]]()
-    registry.put("file", FileTask)
-    registry.put("files", FilesTask)
-    registry.put("string", StringTask)
-    registry.put("scalac", SbtScalaTask)
+    Seq(FileTask, FilesTask, StringTask, SbtScalaTask) foreach { task =>
+      registry.put(task.taskName, task)
+    }
     registry
   }
 
@@ -56,10 +57,17 @@ class Build(parser: BuildParser, workingDir: URI) {
     val flatBuild = buildFileUris.distinct.foldLeft(emptyBuild) { loadBuildFile }
 
     val buildGraph = targets.foldLeft(new BuildGraph(Map.empty, flatBuild)) {
-      case (graph, target) => validateTopLevelTask(target, graph)
+      case (graph, target) => validateTopLevelTask(target, mutable.LinkedHashSet.empty, graph)
     }
 
-    // TODO: Execute the targets!
+    targets foreach { target =>
+      // TODO: Execute the targets!
+      // For this, we want to build a set of sets of tasks we will be executing. This can be handled
+      // by using an IndexedSeq of Set[BuildNode], where each subset will be executed in depth-first
+      // order.
+      val plan = executionPlan(buildGraph.tasks(target))
+      println(s"Got a plan! plan = $plan")
+    }
   }
 
   /** Loads the given build file into the given build state, returning the new build state. */
@@ -115,16 +123,27 @@ class Build(parser: BuildParser, workingDir: URI) {
     * @param buildGraph the build graph constructed so far
     * @return the updated build graph
     */
-  def validateTopLevelTask(taskUri: URI, buildGraph: BuildGraph): BuildGraph = {
+  def validateTopLevelTask(
+    taskUri: URI,
+    parentTasks: mutable.LinkedHashSet[URI],
+    buildGraph: BuildGraph
+  ): BuildGraph = {
     val buildFile = stripFragment(taskUri)
-    val flatTask = buildGraph.flatBuild.tasks.get(taskUri) getOrElse {
-      throw new ConfigException(
-        s"""target "${taskUri.getFragment}" not found in build file "${buildFile}""""
-      )
-    }
+    // Check to see if this task is already in the build.
+    if (buildGraph.tasks.contains(taskUri)) {
+      // No-op; already processed.
+      buildGraph
+    } else {
+      val flatTask = buildGraph.flatBuild.tasks.get(taskUri) getOrElse {
+        throw new ConfigException(
+          s"""target "${taskUri.getFragment}" not found in build file "${buildFile}""""
+        )
+      }
 
-    val (taskNode, updatedGraph) = validateFlatTask(flatTask, buildFile, buildGraph)
-    updatedGraph.withTask(taskUri, taskNode)
+      val (taskNode, updatedGraph) =
+        validateFlatTask(flatTask, buildFile, parentTasks + taskUri, buildGraph)
+      updatedGraph.withTask(taskUri, taskNode.withId(taskUri))
+    }
   }
 
   /** Validates a flat task, returning the build node associated with it, along with the
@@ -138,17 +157,38 @@ class Build(parser: BuildParser, workingDir: URI) {
   def validateFlatTask(
     flatTask: FlatTask,
     buildFile: URI,
+    parentTasks: mutable.LinkedHashSet[URI],
     buildGraph: BuildGraph
   ): (BuildNode, BuildGraph) = {
     if (flatTask.taskType == "task_ref") {
       // Fetch the task's URI.
-      val referencedTaskUri = buildFile.resolve(validateReferenceTask(flatTask))
+      // If the task name is relative and has no fragment, treat it as a local task.
+      val taskRefName = validateReferenceTask(flatTask)
+      val taskRefUri = new URI(taskRefName)
+      val referencedTaskUri = if (taskRefUri.getFragment == null) {
+        if (!taskRefUri.isAbsolute) {
+          // Assume that this is a local task.
+          buildFile.resolve("#" + taskRefName)
+        } else {
+          flatTask.configException(s""""task_ref" URI found with no fragment: $taskRefUri""")
+        }
+      } else {
+        buildFile.resolve(validateReferenceTask(flatTask))
+      }
 
       // TODO: If this is a task ref in an unloaded build file:
       //   load that build file
 
+      // Verify that we aren't creating a circular dependency.
+      if (parentTasks.contains(referencedTaskUri)) {
+        val trimmedParents = parentTasks dropWhile { _ != referencedTaskUri }
+        throw new ConfigException(
+          s"circular dependency detected: ${trimmedParents.mkString(" -> ")} -> $referencedTaskUri"
+        )
+      }
+
       // Replace this task with the referenced task.
-      val updatedGraph = validateTopLevelTask(referencedTaskUri, buildGraph)
+      val updatedGraph = validateTopLevelTask(referencedTaskUri, parentTasks, buildGraph)
 
       // TODO: This is weird - we're pulling the task back out of the graph, only to add it in the
       // validateTopLevelTask call. Fix?
@@ -177,16 +217,16 @@ class Build(parser: BuildParser, workingDir: URI) {
               // Implicitly convert barewords to the appropriate type.
               val taskType = expectedTypeOption match {
                 case Some(Task.StringType) | None => StringTask
-                case Some(Task.FileType) => FileTask
+                case Some(Task.FileType) => FilesTask
                 case Some(Task.NoType) => {
                   // TODO: This should be allowed in a special-case (like, for a "dependsOn" arg).
                   flatTask.configException(s"""argument "$name" has a value with no output""")
                 }
               }
-              new BuildNode(Some(value), Map.empty, taskType)
+              new BuildNode(None, Some(value), Map.empty, taskType)
             }
             case TaskArgument(value) => {
-              val (node, updatedGraph) = validateFlatTask(value, buildFile, currGraph)
+              val (node, updatedGraph) = validateFlatTask(value, buildFile, parentTasks, currGraph)
               // Validate the task type.
               expectedTypeOption foreach { expectedType =>
                 if (node.task.taskType != expectedType) {
@@ -203,7 +243,21 @@ class Build(parser: BuildParser, workingDir: URI) {
         }
       }
 
-      (new BuildNode(flatTask.name, arguments, taskImpl), currGraph)
+      (new BuildNode(None, flatTask.name, arguments, taskImpl), currGraph)
     }
+  }
+
+  /** Build an execution plan for a given target. */
+  def executionPlan(target: BuildNode): Seq[Set[BuildNode]] = {
+    val childPlan = target.arguments.values.flatten.foldLeft(Seq.empty[Set[BuildNode]]) {
+      case (planSoFar, childNode) => {
+        val currPlan: Seq[Set[BuildNode]] = executionPlan(childNode)
+        // Merge with the plan so far.
+        planSoFar.zipAll(currPlan, Set.empty[BuildNode], Set.empty[BuildNode]) map {
+          case (soFar, curr) => soFar ++ curr
+        }
+      }
+    }
+    Set(target) +: childPlan
   }
 }

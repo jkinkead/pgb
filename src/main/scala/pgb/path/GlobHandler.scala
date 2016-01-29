@@ -6,6 +6,7 @@ import java.nio.file.{
   FileSystems,
   FileVisitResult,
   Files,
+  NoSuchFileException,
   Path,
   PathMatcher,
   Paths,
@@ -86,7 +87,7 @@ object GlobHandler {
 
     override def visitFileFailed(file: Path, e: IOException): FileVisitResult = {
       e match {
-        case _: AccessDeniedException => {
+        case (_: AccessDeniedException | _: NoSuchFileException) => {
           // Ignore, fine.
           FileVisitResult.CONTINUE
         }

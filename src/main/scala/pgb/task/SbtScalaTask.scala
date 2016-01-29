@@ -1,6 +1,6 @@
 package pgb.task
 
-import pgb.{ FileOutputTask, FilesArtifact, Input }
+import pgb.{ FileOutputTask, FilesArtifact, Input, Task }
 import pgb.path.Resolver
 
 // TODO: Add the dependency for ScalaInstance!!!
@@ -22,6 +22,12 @@ import java.net.{ URI, URL, URLClassLoader }
 import java.nio.file.{ Files, Paths }
 
 object SbtScalaTask extends FileOutputTask {
+  override val taskName: String = "scalac"
+
+  override val argumentTypes = Map(
+    "src" -> Task.FileType
+  )
+
   /** @return a class loader loading files out of the given sequence of jars. */
   def getClassLoader(jars: Seq[File]): ClassLoader = {
     new URLClassLoader(jars.map(_.toURI.toURL).toArray[URL], this.getClass.getClassLoader)

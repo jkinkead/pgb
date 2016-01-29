@@ -7,6 +7,8 @@ import java.net.URI
 
 /** A task that generates a single file based on a path. */
 object FileTask extends FileOutputTask {
+  override val taskName: String = "file"
+
   /** @return the single file pointed to by the name of this task
     * @throws ConfigException if the path doesn't resolve to exactly one file
     */
