@@ -1,6 +1,6 @@
 package pgb.task
 
-import pgb.{ Input, StringArtifact, StringOutputTask }
+import pgb.{ Artifact, Input, StringArtifact, StringOutputTask }
 
 import java.net.URI
 
@@ -13,8 +13,8 @@ object StringTask extends StringOutputTask {
     name: Option[String],
     buildRoot: URI,
     arguments: Map[String, Seq[Input]],
-    previousOutput: Option[StringArtifact]
-  ): StringArtifact = {
+    previousOutput: Option[Artifact]
+  ): Artifact = {
     // TODO: Require name.
     StringArtifact(name.get)
   }

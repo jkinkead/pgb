@@ -1,6 +1,6 @@
 package pgb.engine
 
-import pgb.{ ConfigException, ExecutionException, Task }
+import pgb.{ Artifact, ConfigException, ExecutionException, Input, Task }
 import pgb.engine.parser.{ BuildParser, FlatTask, RawTaskArgument, StringArgument, TaskArgument }
 import pgb.path.Resolver
 import pgb.task._
@@ -10,6 +10,7 @@ import java.net.URI
 import java.util.{ Map => JavaMap }
 import java.util.concurrent.ConcurrentHashMap
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 /** Class responsible for managing a pgb build.
@@ -18,8 +19,8 @@ import scala.collection.mutable
   */
 class Build(parser: BuildParser, workingDir: URI) {
   /** Mutable task registry. Should only be updated through TaskDef and in this class. */
-  private[pgb] val taskRegistry: JavaMap[String, Task[_]] = {
-    val registry = new ConcurrentHashMap[String, Task[_]]()
+  private[pgb] val taskRegistry: JavaMap[String, Task] = {
+    val registry = new ConcurrentHashMap[String, Task]()
     Seq(FileTask, FilesTask, StringTask, SbtScalaTask) foreach { task =>
       registry.put(task.taskName, task)
     }
@@ -60,20 +61,36 @@ class Build(parser: BuildParser, workingDir: URI) {
       case (graph, target) => validateTopLevelTask(target, mutable.LinkedHashSet.empty, graph)
     }
 
+    val results = new ConcurrentHashMap[BuildNode, Artifact]()
     targets foreach { target =>
-      // TODO: Execute the targets!
-      // For this, we want to build a set of sets of tasks we will be executing. This can be handled
-      // by using an IndexedSeq of Set[BuildNode], where each subset will be executed in depth-first
-      // order.
-      val plan = executionPlan(buildGraph.tasks(target))
-      println(s"Got a plan! plan = $plan")
+      // TODO: Handle non-file `target`. This assumes a File.
+      val buildRoot = target.resolve(".")
+      val plan: Seq[Set[BuildNode]] = executionPlan(buildGraph.tasks(target))
+      // Execute each set of items in the plan, in order. Don't repeat items.
+      plan foreach { nodes =>
+        val unexecutedNodes = nodes -- results.keySet.asScala
+        // TODO: Execute in parallel.
+        unexecutedNodes foreach { node =>
+          val taskArguments: Map[String, Seq[Input]] = node.arguments mapValues { nodes =>
+            nodes map { node =>
+              // TODO: Populate isUpdated correctly.
+              results.get(node).asInput(true)
+            }
+          }
+
+          // TODO: Look up previous artifact from a cache? Or remove it.
+          val artifact = node.task.execute(node.name, buildRoot, taskArguments, None)
+          results.put(node, artifact)
+        }
+      }
     }
   }
 
   /** Loads the given build file into the given build state, returning the new build state. */
   def loadBuildFile(currState: FlatBuild, buildUri: URI): FlatBuild = {
-    // TODO: Here, we assume that resolving & parsing the build file is fast. We could check a
-    // cache - although that might end up in the `path.Scheme` handling.
+    // Here, we assume that resolving & parsing the build file is fast. Parsing should be quick, but
+    // the resolution step might be slow. Hopefully, a cache in the Scheme or Resolver will fix
+    // this.
     val buildFile = Resolver.resolveSingleFilePath(buildUri.toString, workingDir)
     if (currState.resolvedIncludes.contains(buildFile)) {
       currState
@@ -190,8 +207,6 @@ class Build(parser: BuildParser, workingDir: URI) {
       // Replace this task with the referenced task.
       val updatedGraph = validateTopLevelTask(referencedTaskUri, parentTasks, buildGraph)
 
-      // TODO: This is weird - we're pulling the task back out of the graph, only to add it in the
-      // validateTopLevelTask call. Fix?
       (updatedGraph.tasks(referencedTaskUri), updatedGraph)
     } else {
       // Look up the task type. If undefined, run through includes & retry.
@@ -258,6 +273,6 @@ class Build(parser: BuildParser, workingDir: URI) {
         }
       }
     }
-    Set(target) +: childPlan
+    childPlan :+ Set(target)
   }
 }

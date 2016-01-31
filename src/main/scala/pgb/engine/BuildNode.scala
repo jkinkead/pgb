@@ -14,10 +14,12 @@ class BuildNode(
     val id: Option[URI],
     val name: Option[String],
     val arguments: Map[String, Seq[BuildNode]],
-    val task: Task[_]
+    val task: Task
 ) {
+  /** @return a copy of this node with ID set */
   def withId(newId: URI): BuildNode = new BuildNode(Some(newId), name, arguments, task)
 
+  /** Consider two build notes equal if they have the same URI. Else, use object identity. */
   override def equals(other: Any): Boolean = {
     other match {
       case buildNode: BuildNode if id.nonEmpty && buildNode.id.nonEmpty => {
@@ -28,6 +30,7 @@ class BuildNode(
     }
   }
 
+  /** Consider two build notes equal if they have the same URI. Else, use object identity. */
   override def hashCode(): Int = {
     if (id.nonEmpty) id.hashCode else super.hashCode
   }

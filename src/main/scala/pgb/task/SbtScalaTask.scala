@@ -1,6 +1,6 @@
 package pgb.task
 
-import pgb.{ FileOutputTask, FilesArtifact, Input, Task }
+import pgb.{ Artifact, FileOutputTask, FilesArtifact, Input, Task }
 import pgb.path.Resolver
 
 // TODO: Add the dependency for ScalaInstance!!!
@@ -63,8 +63,8 @@ object SbtScalaTask extends FileOutputTask {
     name: Option[String],
     buildRoot: URI,
     arguments: Map[String, Seq[Input]],
-    previousOutput: Option[FilesArtifact]
-  ): FilesArtifact = {
+    previousOutput: Option[Artifact]
+  ): Artifact = {
     // TODO: Pass this in; the framework should create this.
     val destPath = Paths.get(buildRoot).resolve("target/pgb/scalac")
     Files.createDirectories(destPath)

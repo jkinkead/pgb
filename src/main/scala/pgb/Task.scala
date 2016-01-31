@@ -23,7 +23,7 @@ object Task {
 /** A single task in the build system.
   * @tparam O the type of the task's output
   */
-trait Task[O <: Artifact] {
+trait Task {
   /** Return the name of this task, as it would appear in a build file. */
   def taskName: String
 
@@ -38,12 +38,15 @@ trait Task[O <: Artifact] {
     * @throws ConfigException if there was a problem with the task's arguments or name
     * @throws ExecutionException if there was a problem executing the task
     */
+  // TODO: buildRoot here was just a hack - this is actually not needed.
+  // What IS needed is access to the current build state. Specifically, this needs the task's
+  // working directory, and a way to call out to other tasks in the build.
   def execute(
     name: Option[String],
     buildRoot: URI,
     arguments: Map[String, Seq[Input]],
-    previousOutput: Option[O]
-  ): O
+    previousOutput: Option[Artifact]
+  ): Artifact
 
   /** Return the type of this task. */
   def taskType: Task.Type
@@ -61,14 +64,14 @@ trait Task[O <: Artifact] {
 }
 
 /** Task with file output. */
-trait FileOutputTask extends Task[FilesArtifact] {
+trait FileOutputTask extends Task {
   final override val taskType: Task.Type = Task.FileType
 
   // TODO: Consider adding helper execute method here so that subclasses can ignore FilesArtifact.
 }
 
 /** Task with string output. */
-trait StringOutputTask extends Task[StringArtifact] {
+trait StringOutputTask extends Task {
   final override val taskType: Task.Type = Task.StringType
 
   // TODO: Consider adding helper execute method here so that subclasses can ignore StringArtifact.

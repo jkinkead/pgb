@@ -1,6 +1,7 @@
 package pgb.engine
 
 import pgb.{
+  Artifact,
   ConfigException,
   FileOutputTask,
   FilesArtifact,
@@ -150,8 +151,8 @@ class BuildSpec extends UnitSpec with BeforeAndAfter {
         name: Option[String],
         buildRoot: URI,
         arguments: Map[String, Seq[Input]],
-        previousOutput: Option[FilesArtifact]
-      ): FilesArtifact = ???
+        previousOutput: Option[Artifact]
+      ): Artifact = ???
     }
 
     val emptyBuildGraph = new BuildGraph(

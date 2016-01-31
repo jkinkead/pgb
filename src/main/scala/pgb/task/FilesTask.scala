@@ -1,6 +1,6 @@
 package pgb.task
 
-import pgb.{ FileOutputTask, FilesArtifact, Input }
+import pgb.{ Artifact, FileOutputTask, FilesArtifact, Input }
 import pgb.path.Resolver
 
 import java.net.URI
@@ -14,8 +14,8 @@ object FilesTask extends FileOutputTask {
     name: Option[String],
     buildRoot: URI,
     arguments: Map[String, Seq[Input]],
-    previousOutput: Option[FilesArtifact]
-  ): FilesArtifact = {
+    previousOutput: Option[Artifact]
+  ): Artifact = {
     // TODO: Require name.
     val files = Resolver.resolvePath(name.get, buildRoot)
     FilesArtifact(files)
