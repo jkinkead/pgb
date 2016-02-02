@@ -43,7 +43,7 @@ trait Task {
   // working directory, and a way to call out to other tasks in the build.
   def execute(
     name: Option[String],
-    buildRoot: URI,
+    buildState: BuildState,
     arguments: Map[String, Seq[Input]],
     previousOutput: Option[Artifact]
   ): Artifact

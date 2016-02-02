@@ -1,12 +1,13 @@
 package pgb.engine
 
-import pgb.{ Artifact, ConfigException, ExecutionException, Input, Task }
+import pgb.{ Artifact, BuildState, ConfigException, ExecutionException, Input, Task }
 import pgb.engine.parser.{ BuildParser, FlatTask, RawTaskArgument, StringArgument, TaskArgument }
 import pgb.path.Resolver
 import pgb.task._
 
 import java.io.File
 import java.net.URI
+import java.nio.file.{ Files, Paths }
 import java.util.{ Map => JavaMap }
 import java.util.concurrent.ConcurrentHashMap
 
@@ -65,11 +66,15 @@ class Build(parser: BuildParser, workingDir: URI) {
     targets foreach { target =>
       // TODO: Handle non-file `target`. This assumes a File.
       val buildRoot = target.resolve(".")
+      val targetDirectory = Paths.get(buildRoot.resolve("target/pgb/" + target.getFragment))
+      Files.createDirectories(targetDirectory)
+      val buildState = BuildState(targetDirectory, Paths.get(buildRoot))
       val plan: Seq[Set[BuildNode]] = executionPlan(buildGraph.tasks(target))
       // Execute each set of items in the plan, in order. Don't repeat items.
       plan foreach { nodes =>
         val unexecutedNodes = nodes -- results.keySet.asScala
         // TODO: Execute in parallel.
+        // TODO: Create a working directory here instead. These should be per-task, not per-target.
         unexecutedNodes foreach { node =>
           val taskArguments: Map[String, Seq[Input]] = node.arguments mapValues { nodes =>
             nodes map { node =>
@@ -78,8 +83,9 @@ class Build(parser: BuildParser, workingDir: URI) {
             }
           }
 
-          // TODO: Look up previous artifact from a cache? Or remove it.
-          val artifact = node.task.execute(node.name, buildRoot, taskArguments, None)
+          // TODO: Look up previous artifact from a cache, or remove it from the `execute`
+          // arguments.
+          val artifact = node.task.execute(node.name, buildState, taskArguments, None)
           results.put(node, artifact)
         }
       }

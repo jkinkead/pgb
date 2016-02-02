@@ -1,6 +1,15 @@
 package pgb.task
 
-import pgb.{ Artifact, FileOutputTask, FilesArtifact, Input, Task }
+import pgb.{
+  Artifact,
+  BuildState,
+  FileOutputTask,
+  FilesArtifact,
+  FilesInput,
+  Input,
+  StringInput,
+  Task
+}
 import pgb.path.Resolver
 
 // TODO: Add the dependency for ScalaInstance!!!
@@ -25,12 +34,42 @@ object SbtScalaTask extends FileOutputTask {
   override val taskName: String = "scalac"
 
   override val argumentTypes = Map(
-    "src" -> Task.FileType
+    // Source file(s) to compile. Required.
+    "src" -> Task.FileType,
+    // The version of Scala to compile against. Optional.
+    "scalaVersion" -> Task.StringType
   )
 
-  /** @return a class loader loading files out of the given sequence of jars. */
-  def getClassLoader(jars: Seq[File]): ClassLoader = {
-    new URLClassLoader(jars.map(_.toURI.toURL).toArray[URL], this.getClass.getClassLoader)
+  /** @param jars the jar files to set as the classpath
+    * @param useParent if true, set the current class's loader as the parent of the returned class
+    * loader
+    * @return a class loader loading files out of the given sequence of jar files
+    */
+  def getClassLoader(jars: Seq[File], useParent: Boolean): ClassLoader = {
+    val convertedJars = jars.map(_.toURI.toURL).toArray[URL]
+    // TODO: We never use a parent loader for compiling the SBT compiler, since it will pick up
+    // things on our boot classpath if we do.
+    val parent = if (useParent) { this.getClass.getClassLoader } else { null }
+    new URLClassLoader(convertedJars, parent)
+  }
+
+  /** Builds a ScalaInstance instance using jars from the given scala home directory. This is a
+    * special bundle used internally by SBT to store information about an installed Scala version.
+    * @param scalaVersion the numeric scala version, e.g. `"2.10.5"`
+    * @param scalaHome the directory where scala is loaded
+    * @return the ScalaInstance wrapping that home directory
+    */
+  def getScalaInstance(scalaVersion: String, scalaHome: File): ScalaInstance = {
+    // TODO: Resolve properly!
+    val scalaCompiler = new File(scalaHome, "lib/scala-compiler.jar")
+    val scalaLibrary = new File(scalaHome, "lib/scala-library.jar")
+    val scalaReflect = new File(scalaHome, "lib/scala-reflect.jar")
+    val scalaJars = (ScalaInstance.allJars(scalaHome).toSet - scalaCompiler - scalaLibrary).toSeq
+    // Note that this class loader contains all of the core Scala libraries needed to build and run
+    // the SBT analyzing compiler.
+    val classLoader = getClassLoader(Seq(scalaCompiler, scalaLibrary, scalaReflect), false)
+
+    new ScalaInstance(scalaVersion, classLoader, scalaLibrary, scalaCompiler, scalaJars, None)
   }
 
   /** Implementation copied from IncrementalCompiler in sbt integration. */
@@ -41,17 +80,11 @@ object SbtScalaTask extends FileOutputTask {
     instance: ScalaInstance,
     sbtLogger: Logger
   ): Unit = {
-    // TODO: ClasspathOptions doesn't seem to popluate the classpath the way we want. `auto` in
-    // particular uses the wrong scala version.
-    val raw = new RawCompiler(
-      instance,
-      //ClasspathOptions(true, true, false, true, true),
-      ClasspathOptions.auto,
-      sbtLogger
-    )
+    val raw = new RawCompiler(instance, ClasspathOptions.auto, sbtLogger)
     AnalyzingCompiler.compileSources(
       Seq(sourceJar),
       targetJar,
+      // TODO: What if we put the reflect jar here?
       Seq(interfaceJar),
       "sbt compiler",
       raw,
@@ -61,43 +94,47 @@ object SbtScalaTask extends FileOutputTask {
 
   override def execute(
     name: Option[String],
-    buildRoot: URI,
+    buildState: BuildState,
     arguments: Map[String, Seq[Input]],
     previousOutput: Option[Artifact]
   ): Artifact = {
-    // TODO: Pass this in; the framework should create this.
-    val destPath = Paths.get(buildRoot).resolve("target/pgb/scalac")
-    Files.createDirectories(destPath)
+    val targetDirectory = buildState.targetDirectory
 
-    val outputDirectory = CompileOutput(destPath.toFile)
+    // TODO: Default from a task arg.
+    val extraArgs = Seq("-g:line", "-unchecked")
 
-    // TODO: SBT sets the compiler thread's ClassLoader (via setContextClassLoader) in order to make
-    // these resolve to the correct thing.
-    // The ClassLoader itself is just a URLClassLoader wrapping the target Scala library classpath,
-    // with the parent loader returned from ScalaProvider.loader.
-    // ScalaProvider.loader is an instance of BootFilteredLoader, which does two things: delegates
-    // getResource(s) calls to the root class loader, and throws exceptions when requested to load
-    // embedded classes (ivy, sbt, scala, and fjbg).
+    // TODO: Fix argument handling.
+    val sourceFiles = arguments("src").head.asInstanceOf[FilesInput].files.values
 
-    println("Getting ScalaInstance")
+    // TODO: Fix argument handling.
+    val scalaVersion = arguments.get("scalaVersion") map { args =>
+      args.head.asInstanceOf[StringInput].value.value
+    } getOrElse {
+      "2.10.5"
+    }
+
+    // So, the below is some nasty stuff for interfacing with the SBT internals.
+    //
+    // Most of SBT is compiled into a version-agnostic set of libraries (they will run on any
+    // version of Scala). However, it needs to recompile the core incremental compiler / reflection
+    // interface anew for each Scala library version, since these APIs change much more frequently
+    // than do the rest of Scala.
+
+    println(s"Getting ScalaInstance for scala $scalaVersion")
 
     // TODO: Get scala home in some other way. SBT uses the sbt launcher to get this.
-    val scalaVersion = "2.11.6"
-    // val scalaVersion = "2.10.5"
-    val scalaHome = new File(s"/Users/Kinkead/lib/scala-$scalaVersion")
-    val scalaCompiler = new File(scalaHome, "lib/scala-compiler.jar")
-    val scalaLibrary = new File(scalaHome, "lib/scala-library.jar")
-    val scalaJars = (ScalaInstance.allJars(scalaHome).toSet - scalaCompiler - scalaLibrary).toSeq
-    val classLoader = getClassLoader(Seq(scalaCompiler, scalaLibrary))
     val scalaInstance =
-      new ScalaInstance(scalaVersion, classLoader, scalaLibrary, scalaCompiler, scalaJars, None)
+      getScalaInstance(scalaVersion, new File(s"/Users/Kinkead/lib/scala-$scalaVersion"))
+
     println(s"got ScalaInstance = $scalaInstance")
 
-    // TODO: Use task name or similar for a sub-directory, in case of multiple scalac targets.
+    // The directory SBT will write compiler output to. This is used in a couple of places.
+    val outputDirectory = CompileOutput(targetDirectory.toFile)
 
-    val analysisFile = destPath.resolve("analysis.txt").toFile
+    val analysisFile = targetDirectory.resolve("analysis.txt").toFile
     val analysisStore = AnalysisStore.sync(AnalysisStore.cached(FileBasedStore(analysisFile)))
     println(s"loading analysis from $analysisFile")
+
     val (oldAnalysis, compileSetup) = {
       if (analysisFile.exists) {
         analysisStore.get()
@@ -118,13 +155,6 @@ object SbtScalaTask extends FileOutputTask {
       (Analysis.Empty, defaultCompileSetup)
     }
 
-    // TODO: Default from a task arg.
-    val extraArgs = Seq("-g:line", "-unchecked")
-
-    // TODO: Take source path from args.
-    //val sourceFiles = Resolver.resolvePath("src/main/scala/**.scala", buildRoot)
-    val sourceFiles = Resolver.resolvePath("src/main/scala/**/Artifact.scala", buildRoot)
-
     // TODO: Configure this correctly! You can pass in a stream.
     // http://www.scala-sbt.org/0.13.7/api/index.html#sbt.ConsoleLogger$
     val sbtLogger = {
@@ -133,12 +163,20 @@ object SbtScalaTask extends FileOutputTask {
       logger
     }
 
+    // TODO: SBT sets the compiler thread's ClassLoader (via setContextClassLoader) in order to make
+    // these resolve to the correct thing.
+    // The ClassLoader itself is just a URLClassLoader wrapping the target Scala library classpath,
+    // with the parent loader returned from ScalaProvider.loader.
+    // ScalaProvider.loader is an instance of BootFilteredLoader, which does two things: delegates
+    // getResource(s) calls to the root class loader, and throws exceptions when requested to load
+    // embedded classes (ivy, sbt, scala, and fjbg).
+
     // CompilerInterfaceProvider is a special shiv that lets SBT dynamically compile new versions of
     // the SBT compiler from source.
     //
     // We *might* be able to get away with using the stale Scala jar, but might have to recompile
     // it.
-    val jarDest = new File(s"/Users/Kinkead/compiler-interface-$scalaVersion.jar")
+    val jarDest = targetDirectory.resolve(s"compiler-interface-$scalaVersion.jar").toFile
     if (!jarDest.exists) {
       // TODO: This compilation should happen against the target scala version, not the current
       // scala version.
@@ -153,6 +191,7 @@ object SbtScalaTask extends FileOutputTask {
         sbtLogger = sbtLogger
       )
       println("Done compiling scala.")
+
     }
     val interfaceProvider = CompilerInterfaceProvider.constant(jarDest)
     println("got interface provider.")
@@ -190,7 +229,7 @@ object SbtScalaTask extends FileOutputTask {
         // TODO: Take from real classpath.
         classpath = Seq(scalaInstance.libraryJar),
         // TODO: This is probably ignored.
-        singleOutput = destPath.toFile,
+        singleOutput = targetDirectory.toFile,
         // TODO: Figure out good compiler options.
         options = Seq.empty[String],
         callback,
@@ -227,7 +266,7 @@ object SbtScalaTask extends FileOutputTask {
 
     println("Done!")
 
-    val files = Resolver.resolvePath("**.class", destPath.toUri)
+    val files = Resolver.resolvePath("**.class", targetDirectory.toUri)
 
     FilesArtifact(files)
   }

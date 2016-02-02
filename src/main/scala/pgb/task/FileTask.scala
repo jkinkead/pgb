@@ -1,9 +1,7 @@
 package pgb.task
 
-import pgb.{ Artifact, ConfigException, FileOutputTask, FilesArtifact, Input }
+import pgb.{ Artifact, BuildState, ConfigException, FileOutputTask, FilesArtifact, Input }
 import pgb.path.Resolver
-
-import java.net.URI
 
 /** A task that generates a single file based on a path. */
 object FileTask extends FileOutputTask {
@@ -14,13 +12,13 @@ object FileTask extends FileOutputTask {
     */
   override def execute(
     name: Option[String],
-    buildRoot: URI,
+    buildState: BuildState,
     arguments: Map[String, Seq[Input]],
     previousOutput: Option[Artifact]
   ): Artifact = {
     // TODO: Require name.
     val path = name.get
-    val files = Resolver.resolvePath(path, buildRoot)
+    val files = Resolver.resolvePath(path, buildState.buildRoot.toUri)
     if (files.isEmpty) {
       throw new ConfigException(s"""path "$path" resolved to no files.""")
     } else if (files.tail.nonEmpty) {
