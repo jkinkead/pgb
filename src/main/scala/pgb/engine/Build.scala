@@ -23,7 +23,7 @@ class Build(parser: BuildParser, workingDir: URI) {
   private[pgb] val taskRegistry: JavaMap[String, Task] = {
     val registry = new ConcurrentHashMap[String, Task]()
     Seq(FileTask, FilesTask, StringTask, SbtScalaTask) foreach { task =>
-      registry.put(task.taskName, task)
+      registry.put(task.taskType, task)
     }
     registry
   }
@@ -76,16 +76,15 @@ class Build(parser: BuildParser, workingDir: URI) {
         // TODO: Execute in parallel.
         // TODO: Create a working directory here instead. These should be per-task, not per-target.
         unexecutedNodes foreach { node =>
-          val taskArguments: Map[String, Seq[Input]] = node.arguments mapValues { nodes =>
+          val taskArguments: Map[String, Seq[Artifact]] = node.arguments mapValues { nodes =>
             nodes map { node =>
-              // TODO: Populate isUpdated correctly.
-              results.get(node).asInput(true)
+              results.get(node)
             }
           }
 
           // TODO: Look up previous artifact from a cache, or remove it from the `execute`
           // arguments.
-          val artifact = node.task.execute(node.name, buildState, taskArguments, None)
+          val artifact = node.task.execute(node.name, taskArguments, buildState)
           results.put(node, artifact)
         }
       }
@@ -236,19 +235,19 @@ class Build(parser: BuildParser, workingDir: URI) {
           val newValues = argumentValues map {
             case StringArgument(value) => {
               // Implicitly convert barewords to the appropriate type.
-              val taskType = expectedTypeOption match {
-                case Some(Task.StringType) | None => StringTask
-                case Some(Task.FileType) => FilesTask
-                case Some(Task.NoType) => {
-                  // TODO: This should be allowed in a special-case (like, for a "dependsOn" arg).
-                  flatTask.configException(s"""argument "$name" has a value with no output""")
+              val taskImplementation = expectedTypeOption match {
+                case Some(Input.Type(_, _, Artifact.StringType)) | None => StringTask
+                case Some(Input.Type(_, _, Artifact.FileType)) => FilesTask
+                case _ => {
+                  flatTask.configException(s"""argument "$name" given task with no output""")
                 }
               }
-              new BuildNode(None, Some(value), Map.empty, taskType)
+              new BuildNode(None, Some(value), Map.empty, taskImplementation)
             }
             case TaskArgument(value) => {
               val (node, updatedGraph) = validateFlatTask(value, buildFile, parentTasks, currGraph)
               // Validate the task type.
+              // TODO: Allow NoType to appear in a dependsOn task.
               expectedTypeOption foreach { expectedType =>
                 if (node.task.taskType != expectedType) {
                   flatTask.configException(

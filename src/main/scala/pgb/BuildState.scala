@@ -8,4 +8,9 @@ import java.nio.file.Path
   * @param buildRoot the root of the build. This is the directory the build file for this task is
   * contained in.
   */
-case class BuildState(targetDirectory: Path, buildRoot: Path)
+case class BuildState(targetDirectory: Path, buildRoot: Path) {
+  def configException(message: String): Nothing = {
+    // TODO: Make `BuildState` be a trait; have this delegate to FilePositional.
+    throw new ConfigException(message)
+  }
+}

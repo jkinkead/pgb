@@ -2,12 +2,13 @@ package pgb.engine
 
 import pgb.{
   Artifact,
+  BuildState,
   ConfigException,
   FileOutputTask,
   FilesArtifact,
   Input,
+  StringArtifact,
   StringOutputTask,
-  Task,
   UnitSpec
 }
 import pgb.engine.parser.{ Argument, BuildParser, FlatTask, StringArgument, TaskArgument }
@@ -142,16 +143,16 @@ class BuildSpec extends UnitSpec with BeforeAndAfter {
   trait TestTaskFixture {
     /** A simple task which accepts one argument. */
     class TestTask(
-        override val argumentTypes: Map[String, Task.Type],
+        override val argumentTypes: Map[String, Input.Type],
         override val allowUnknownArguments: Boolean
     ) extends FileOutputTask {
-      override val taskName = "testy"
+      override val taskType = "testy"
 
-      def execute(
+      override def executeValidated(
         name: Option[String],
-        buildRoot: URI,
-        arguments: Map[String, Seq[Input]],
-        previousOutput: Option[Artifact]
+        stringArguments: Map[String, Seq[StringArtifact]],
+        fileArguments: Map[String, FilesArtifact],
+        buildState: BuildState
       ): Artifact = ???
     }
 
@@ -207,7 +208,7 @@ class BuildSpec extends UnitSpec with BeforeAndAfter {
   }
 
   it should "fail if an argument's type doesn't match" in new TestTaskFixture {
-    val testTaskImpl = new TestTask(Map("file" -> Task.FileType), false)
+    val testTaskImpl = new TestTask(Map("file" -> Input.OptionalFile), false)
     testBuild.taskRegistry.put("testy", testTaskImpl)
     val testTask = TestFlatTask(
       "testy",
@@ -221,7 +222,7 @@ class BuildSpec extends UnitSpec with BeforeAndAfter {
   }
 
   it should "implicitly convert a string argument to a file argument" in new TestTaskFixture {
-    val testTaskImpl = new TestTask(Map("file" -> Task.FileType), false)
+    val testTaskImpl = new TestTask(Map("file" -> Input.OptionalFile), false)
     testBuild.taskRegistry.put("testy", testTaskImpl)
     val testTask = TestFlatTask(
       "testy",
@@ -243,7 +244,7 @@ class BuildSpec extends UnitSpec with BeforeAndAfter {
   }
 
   it should "leave a valid string argument unchanged" in new TestTaskFixture {
-    val testTaskImpl = new TestTask(Map("str" -> Task.StringType), false)
+    val testTaskImpl = new TestTask(Map("str" -> Input.RequiredString), false)
     testBuild.taskRegistry.put("testy", testTaskImpl)
     val testTask = TestFlatTask(
       "testy",

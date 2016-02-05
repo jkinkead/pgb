@@ -5,9 +5,8 @@ import pgb.{
   BuildState,
   FileOutputTask,
   FilesArtifact,
-  FilesInput,
   Input,
-  StringInput,
+  StringArtifact,
   Task
 }
 import pgb.path.Resolver
@@ -31,13 +30,13 @@ import java.net.{ URI, URL, URLClassLoader }
 import java.nio.file.{ Files, Paths }
 
 object SbtScalaTask extends FileOutputTask {
-  override val taskName: String = "scalac"
+  override val taskType: String = "scalac"
 
   override val argumentTypes = Map(
-    // Source file(s) to compile. Required.
-    "src" -> Task.FileType,
-    // The version of Scala to compile against. Optional.
-    "scalaVersion" -> Task.StringType
+    // Source file(s) to compile.
+    "src" -> Input.RequiredFileList,
+    // The version of Scala to compile against.
+    "scalaVersion" -> Input.OptionalString
   )
 
   /** @param jars the jar files to set as the classpath
@@ -92,24 +91,20 @@ object SbtScalaTask extends FileOutputTask {
     )
   }
 
-  override def execute(
+  override def executeValidated(
     name: Option[String],
-    buildState: BuildState,
-    arguments: Map[String, Seq[Input]],
-    previousOutput: Option[Artifact]
+    stringArguments: Map[String, Seq[StringArtifact]],
+    fileArguments: Map[String, FilesArtifact],
+    buildState: BuildState
   ): Artifact = {
     val targetDirectory = buildState.targetDirectory
 
     // TODO: Default from a task arg.
     val extraArgs = Seq("-g:line", "-unchecked")
 
-    // TODO: Fix argument handling.
-    val sourceFiles = arguments("src").head.asInstanceOf[FilesInput].files.values
+    val sourceFiles = fileArguments("src").values
 
-    // TODO: Fix argument handling.
-    val scalaVersion = arguments.get("scalaVersion") map { args =>
-      args.head.asInstanceOf[StringInput].value.value
-    } getOrElse {
+    val scalaVersion = stringArguments.get("scalaVersion") map { _.head.value } getOrElse {
       "2.10.5"
     }
 

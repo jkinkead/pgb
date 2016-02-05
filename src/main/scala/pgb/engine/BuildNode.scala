@@ -39,7 +39,7 @@ class BuildNode(
     if (id.nonEmpty) {
       id.get.toString
     } else {
-      s"${task.taskName}(${name.getOrElse("")})"
+      s"${task.taskType}(${name.getOrElse("")})"
     }
   }
 }
