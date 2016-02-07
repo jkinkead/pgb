@@ -177,7 +177,7 @@ class Build(parser: BuildParser, workingDir: URI) {
 
   /** Validates a flat task, returning the build node associated with it, along with the
     * possibly-updated build graph. Note that the build graph will only be updated if the task or
-    * one of its dependencies is a task_ref.
+    * one of its dependencies is a taskRef.
     * @param flatTask the task to validate and build a node for
     * @param buildFile the build file this task was found in
     * @param buildGraph the build graph constructed so far
@@ -189,7 +189,7 @@ class Build(parser: BuildParser, workingDir: URI) {
     parentTasks: mutable.LinkedHashSet[URI],
     buildGraph: BuildGraph
   ): (BuildNode, BuildGraph) = {
-    if (flatTask.taskType == "task_ref") {
+    if (flatTask.taskType == "taskRef") {
       validateTaskRef(flatTask, buildFile, parentTasks, buildGraph)
     } else {
       // Look up the task type. If undefined, run through includes & retry.
@@ -241,7 +241,7 @@ class Build(parser: BuildParser, workingDir: URI) {
             case TaskRefArgument(name) => {
               // Treat as a taskRef.
               val (node, updatedGraph) = validateTaskRef(
-                FlatTask("task_ref", Some(name), Map.empty),
+                FlatTask("taskRef", Some(name), Map.empty),
                 buildFile,
                 parentTasks,
                 buildGraph
@@ -273,7 +273,7 @@ class Build(parser: BuildParser, workingDir: URI) {
         // Assume that this is a local task.
         buildFile.resolve("#" + taskRefName)
       } else {
-        flatTask.configException(s""""task_ref" URI found with no fragment: $taskRefUri""")
+        flatTask.configException(s""""taskRef" URI found with no fragment: $taskRefUri""")
       }
     } else {
       buildFile.resolve(validateReferenceTask(flatTask))
