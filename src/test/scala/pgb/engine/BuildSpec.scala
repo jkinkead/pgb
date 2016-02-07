@@ -218,7 +218,7 @@ class BuildSpec extends UnitSpec with BeforeAndAfter {
     val error = intercept[ConfigException] {
       testBuild.validateFlatTask(testTask, buildFile.toUri, EmptyParents, emptyBuildGraph)
     }
-    error.getMessage should include("""argument "file" returns string""")
+    error.getMessage should include("""argument "file" requires files""")
   }
 
   it should "implicitly convert a string argument to a file argument" in new TestTaskFixture {
