@@ -64,6 +64,11 @@ class BuildParserSpec extends UnitSpec {
     result should beSuccess("foo" -> Seq[RawArgument](StringArgument("bar"), StringArgument("gaz")))
   }
 
+  it should "parse a task reference argument" in {
+    val result = testParser.parseAll(testParser.argument, """foo = barTask""")
+    result should beSuccess("foo" -> Seq[RawArgument](TaskRefArgument("barTask")))
+  }
+
   trait TaskFixture {
     val fooName = Some("./foo.txt")
     val barName = Some("bar")

@@ -1,7 +1,14 @@
 package pgb.engine
 
 import pgb.{ Artifact, BuildState, ConfigException, ExecutionException, Input, Task }
-import pgb.engine.parser.{ BuildParser, FlatTask, RawTaskArgument, StringArgument, TaskArgument }
+import pgb.engine.parser.{
+  BuildParser,
+  FlatTask,
+  RawTaskArgument,
+  StringArgument,
+  TaskArgument,
+  TaskRefArgument
+}
 import pgb.path.Resolver
 import pgb.task._
 
@@ -183,36 +190,7 @@ class Build(parser: BuildParser, workingDir: URI) {
     buildGraph: BuildGraph
   ): (BuildNode, BuildGraph) = {
     if (flatTask.taskType == "task_ref") {
-      // Fetch the task's URI.
-      // If the task name is relative and has no fragment, treat it as a local task.
-      val taskRefName = validateReferenceTask(flatTask)
-      val taskRefUri = new URI(taskRefName)
-      val referencedTaskUri = if (taskRefUri.getFragment == null) {
-        if (!taskRefUri.isAbsolute) {
-          // Assume that this is a local task.
-          buildFile.resolve("#" + taskRefName)
-        } else {
-          flatTask.configException(s""""task_ref" URI found with no fragment: $taskRefUri""")
-        }
-      } else {
-        buildFile.resolve(validateReferenceTask(flatTask))
-      }
-
-      // TODO: If this is a task ref in an unloaded build file:
-      //   load that build file
-
-      // Verify that we aren't creating a circular dependency.
-      if (parentTasks.contains(referencedTaskUri)) {
-        val trimmedParents = parentTasks dropWhile { _ != referencedTaskUri }
-        throw new ConfigException(
-          s"circular dependency detected: ${trimmedParents.mkString(" -> ")} -> $referencedTaskUri"
-        )
-      }
-
-      // Replace this task with the referenced task.
-      val updatedGraph = validateTopLevelTask(referencedTaskUri, parentTasks, buildGraph)
-
-      (updatedGraph.tasks(referencedTaskUri), updatedGraph)
+      validateTaskRef(flatTask, buildFile, parentTasks, buildGraph)
     } else {
       // Look up the task type. If undefined, run through includes & retry.
       val taskImpl = if (taskRegistry.containsKey(flatTask.taskType)) {
@@ -260,6 +238,17 @@ class Build(parser: BuildParser, workingDir: URI) {
               currGraph = updatedGraph
               node
             }
+            case TaskRefArgument(name) => {
+              // Treat as a taskRef.
+              val (node, updatedGraph) = validateTaskRef(
+                FlatTask("task_ref", Some(name), Map.empty),
+                buildFile,
+                parentTasks,
+                buildGraph
+              )
+              currGraph = updatedGraph
+              node
+            }
           }
           name -> newValues
         }
@@ -267,6 +256,44 @@ class Build(parser: BuildParser, workingDir: URI) {
 
       (new BuildNode(None, flatTask.name, arguments, taskImpl), currGraph)
     }
+  }
+
+  def validateTaskRef(
+    flatTask: FlatTask,
+    buildFile: URI,
+    parentTasks: mutable.LinkedHashSet[URI],
+    buildGraph: BuildGraph
+  ): (BuildNode, BuildGraph) = {
+    // Fetch the task's URI.
+    // If the task name is relative and has no fragment, treat it as a local task.
+    val taskRefName = validateReferenceTask(flatTask)
+    val taskRefUri = new URI(taskRefName)
+    val referencedTaskUri = if (taskRefUri.getFragment == null) {
+      if (!taskRefUri.isAbsolute) {
+        // Assume that this is a local task.
+        buildFile.resolve("#" + taskRefName)
+      } else {
+        flatTask.configException(s""""task_ref" URI found with no fragment: $taskRefUri""")
+      }
+    } else {
+      buildFile.resolve(validateReferenceTask(flatTask))
+    }
+
+    // TODO: If this is a task ref in an unloaded build file:
+    //   load that build file
+
+    // Verify that we aren't creating a circular dependency.
+    if (parentTasks.contains(referencedTaskUri)) {
+      val trimmedParents = parentTasks dropWhile { _ != referencedTaskUri }
+      throw new ConfigException(
+        s"circular dependency detected: ${trimmedParents.mkString(" -> ")} -> $referencedTaskUri"
+      )
+    }
+
+    // Replace this task with the referenced task.
+    val updatedGraph = validateTopLevelTask(referencedTaskUri, parentTasks, buildGraph)
+
+    (updatedGraph.tasks(referencedTaskUri), updatedGraph)
   }
 
   /** Build an execution plan for a given target. */

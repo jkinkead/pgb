@@ -30,17 +30,20 @@ class BuildParser extends RegexParsers {
     })
   }
 
-  /** Task name or argument name. */
-  val name: Parser[String] = """[\p{IsAlphabetic}_]+""".r
+  /** Task type or argument name. */
+  val name: Parser[String] = """[\p{IsAlphabetic}\p{IsDigit}_]+""".r
 
   /** A string-valued argument. */
   val stringArgument: Parser[StringArgument] = stringLiteral ^^ { StringArgument(_) }
+
+  /** A simple task ref argument. Must be only word characters. */
+  val taskRefArgument: Parser[TaskRefArgument] = name ^^ { TaskRefArgument(_) }
 
   /** A task-valued argument. */
   val taskArgument: Parser[RawTaskArgument] = task ^^ { RawTaskArgument(_) }
 
   /** Any argument value. */
-  val argumentValue: Parser[RawArgument] = stringArgument | taskArgument
+  val argumentValue: Parser[RawArgument] = stringArgument | taskArgument | taskRefArgument
 
   /** List of arguments, as a javascript-style array. */
   val argumentValueList: Parser[Seq[RawArgument]] = "[" ~> repsep(argumentValue, ",") <~ "]"
@@ -75,7 +78,8 @@ class BuildParser extends RegexParsers {
       case (name, values) => {
         val newValues: Seq[Argument] = values map {
           case RawTaskArgument(rawTask) => TaskArgument(validateTask(rawTask, filename, contents))
-          case other: StringArgument => other
+          case string: StringArgument => string
+          case taskRef: TaskRefArgument => taskRef
         }
         name -> newValues
       }
