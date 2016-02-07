@@ -248,10 +248,12 @@ class Build(parser: BuildParser, workingDir: URI) {
               val (node, updatedGraph) = validateFlatTask(value, buildFile, parentTasks, currGraph)
               // Validate the task type.
               // TODO: Allow NoType to appear in a dependsOn task.
-              expectedTypeOption foreach { expectedType =>
-                if (node.task.taskType != expectedType) {
+              expectedTypeOption foreach { inputType =>
+                val expectedType = inputType.artifactType
+                if (node.task.artifactType != inputType.artifactType) {
                   flatTask.configException(
-                    s"""argument "$name" returns ${node.task.taskType}, expected ${expectedType}"""
+                    s"""argument "$name" requires """ +
+                      s"${inputType.artifactType}, got ${node.task.taskType}"
                   )
                 }
               }
